@@ -13,6 +13,7 @@ class eventModel(BaseModel):
     event: str
 
 class ProcessRule:
+    logged_events = []
     def CheckEvent(self, event: BeautifulSoup):
         event_json = {}
         def get_text(tag:str):
@@ -29,7 +30,7 @@ class ProcessRule:
                 if value is not None:
                     return value
             return None
-        event_json['eventID'] = get_text('EventID')
+        event_json['EventID'] = get_text('EventID')
         event_json['Computer'] = get_text('Computer')
         event_json['EventRecordID'] = get_text('EventRecordID')
         event_json['TimeCreated'] = get_attribute('TimeCreated', 'SystemTime')
@@ -40,8 +41,14 @@ class ProcessRule:
                 name = data.get('Name')
                 event_json[name] = data.getText()
 
-        logger.debug(event_json)
-        pass
+        self.logged_events.append(event_json)
+
+        dataframe = pd.DataFrame(self.logged_events)
+        dataframe['EventID'] = pd.to_numeric(dataframe['EventID'], errors= 'coerce')
+        dataframe['TimeCreated'] = pd.to_datetime(dataframe['TimeCreated'], errors= 'coerce', utc=True)
+        
+        dataframe = dataframe.sort_values('TimeCreated').set_index('TimeCreated')
+        logger.debug(dataframe)
     
 
 def parse_beautifulsoup(event:eventModel) -> BeautifulSoup:
