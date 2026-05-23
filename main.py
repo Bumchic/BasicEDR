@@ -1,5 +1,6 @@
-from calendar import c
-from pydoc import text
+
+from tkinter import N
+from typing import NoReturn
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
@@ -14,6 +15,9 @@ class eventModel(BaseModel):
 
 class ProcessRule:
     logged_events = []
+    def __init__(self, Host:str, Port: int):
+        self.Host = Host
+        self.Port = Port
     def CheckEvent(self, event: BeautifulSoup):
         event_json = {}
         def get_text(tag:str):
@@ -43,12 +47,15 @@ class ProcessRule:
 
         self.logged_events.append(event_json)
 
+        
+    def PrintDataFrame(self):
         dataframe = pd.DataFrame(self.logged_events)
         dataframe['EventID'] = pd.to_numeric(dataframe['EventID'], errors= 'coerce')
         dataframe['TimeCreated'] = pd.to_datetime(dataframe['TimeCreated'], errors= 'coerce', utc=True)
         
         dataframe = dataframe.sort_values('TimeCreated').set_index('TimeCreated')
         logger.debug(dataframe)
+        
     
 
 def parse_beautifulsoup(event:eventModel) -> BeautifulSoup:
@@ -60,12 +67,12 @@ print('program running')
 app = FastAPI()
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(name)s] %(levelname)s: %(message)s'
+    format='%(asctime)s [%(name)s] %(levelname)s:\n\t%(message)s'
 )
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-processmonitor = ProcessRule()
 
+MonitorList: list[ProcessRule] = []
 
 @app.get('/')
 async def root():
@@ -74,6 +81,10 @@ async def root():
 @app.websocket("/ws")
 async def websocket_endpoint(socket: WebSocket):
     await socket.accept()
+    Host = socket.client
+    assert Host is not None
+    processmonitor = ProcessRule(Host.host, Host.port)
+    MonitorList.append(processmonitor)
     try: 
         while True:
             data = await socket.receive_json()
@@ -84,6 +95,8 @@ async def websocket_endpoint(socket: WebSocket):
         logger.debug(f"{socket.client} has left")
     except Exception as e:
         logger.debug(f"error: {e}")
+    finally:
+        MonitorList.remove(processmonitor)
 
 
 # @app.post('/api/event/process')
