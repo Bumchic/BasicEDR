@@ -1,6 +1,4 @@
 
-from tkinter import N
-from typing import NoReturn
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
@@ -8,6 +6,12 @@ from pydantic import BaseModel
 from bs4 import BeautifulSoup
 import logging
 import pandas as pd
+from sigma.rule import SigmaLogSource, SigmaRule
+from sigma.collection import SigmaCollection
+from sigma.pipelines.sysmon.sysmon import sysmon_pipeline
+from sigma.backends.splunk.splunk import SplunkBackend
+import yaml
+
 
 
 class eventModel(BaseModel):
@@ -15,6 +19,7 @@ class eventModel(BaseModel):
 
 class ProcessRule:
     logged_events = []
+    rule = SigmaRule.from_yaml
     def __init__(self, Host:str, Port: int):
         self.Host = Host
         self.Port = Port
@@ -73,6 +78,15 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 MonitorList: list[ProcessRule] = []
+rules:SigmaCollection
+with open('pipeline\\win-os-payload encoded PowerShell deployed (command).yaml') as f:
+    data = yaml.full_load(f)
+    string = yaml.dump(data)
+    rules = SigmaCollection.from_yaml(string) 
+pipeline = sysmon_pipeline()
+backend = SplunkBackend(pipeline)
+logger.debug(f'result: {backend.convert(rules)}')
+
 
 @app.get('/')
 async def root():
