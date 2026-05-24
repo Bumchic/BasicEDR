@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.4.1/dist/css/bootstrap.min.css"
+        integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+</head>
+
+<body>
+    <div class="container">
+        <h1 class="h1">Dashboard</h1>
+    </div>
+    <div class="container">
+        <div class="col">
+            <form id="user_form">
+                <div class="container">
+                    <div class="col">
+                        <h2 class="h2">create user</p>
+                    </div>
+                    <div class="col">
+                        <label for="username">username</label>
+                        <input name="username" id="username">
+                    </div>
+                    <div class="col">
+                        <label for="password">password</label>
+                        <input name="password" id="password">
+                    </div>
+                </div>
+                <button class="btn btn-primary" type="submit" id="submit_btn">create user</button>
+                <p id="submit_msg"></p>
+            </form>
+
+        </div>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
+        integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+        integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.4.1/dist/js/bootstrap.min.js"
+        integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6"
+        crossorigin="anonymous"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha1/0.7.0/sha1.min.js"></script>
+    <script>
+        form = $('#user_form')
+        form.on('submit', function (event) {
+            event.preventDefault()
+            usernametx = $('#username').val()
+            passwordtx = $('#password').val()
+            passwordtx = sha1(passwordtx)
+            payload = {
+                username: usernametx,
+                password: passwordtx
+            }
+            $.ajax({
+                url: 'http://127.0.0.1:8000/dashboard/createuser',
+                method:'POST',
+                data: JSON.stringify(payload),
+                contentType: 'application/json',
+                success: (data, status) => {
+                    console.log(data)
+                    $('#submit_msg').text(data.message)
+                },
+                error: (data, status) => {
+                    $('#submit_msg').text(data.responseJSON['message'])
+                }
+            }
+            )
+        })
+    </script>
+</body>
+
+</html>
