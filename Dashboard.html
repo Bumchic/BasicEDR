@@ -32,7 +32,69 @@
                 <button class="btn btn-primary" type="submit" id="submit_btn">create user</button>
                 <p id="submit_msg"></p>
             </form>
-
+            <label for="dropdownuser">Agent:</label>
+            <div class="dropdown" id="dropdownuser">
+                <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton"
+                    data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    Dropdown button
+                </button>
+                <div class="dropdown-menu" aria-labelledby="dropdownMenuButton" id="dropdownmenu">
+                </div>
+                <p id="testp"></p>
+            </div>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th scope="col">EventID</th>
+                        <th scope="col">Computer</th>
+                        <th scope="col">EventRecordID</th>
+                        <th scope="col">TimeCreated</th>
+                        <th scope="col">RuleName</th>
+                        <th scope="col">UtcTime</th>
+                        <th scope="col">ProcessGuid</th>
+                        <th scope="col">ProcessId</th>
+                        <th scope="col">Image</th>
+                        <th scope="col">FileVersion</th>
+                        <th scope="col">Description</th>
+                        <th scope="col">Product</th>
+                        <th scope="col">Company</th>
+                        <th scope="col">OriginalFileName</th>
+                        <th scope="col">CommandLine</th>
+                        <th scope="col">CurrentDirectory</th>
+                        <th scope="col">User</th>
+                        <th scope="col">LogonGuid</th>
+                        <th scope="col">LogonId</th>
+                        <th scope="col">TerminalSessionId</th>
+                        <th scope="col">IntegrityLevel</th>
+                        <th scope="col">Hashes</th>
+                        <th scope="col">ParentProcessGuid</th>
+                        <th scope="col">ParentProcessId</th>
+                        <th scope="col">ParentImage</th>
+                        <th scope="col">ParentCommandLine</th>
+                        <th scope="col">ParentUser</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <th scope="row">1</th>
+                        <td>Mark</td>
+                        <td>Otto</td>
+                        <td>@mdo</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">2</th>
+                        <td>Jacob</td>
+                        <td>Thornton</td>
+                        <td>@fat</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">3</th>
+                        <td>John</td>
+                        <td>Doe</td>
+                        <td>@social</td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
     <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
@@ -47,6 +109,25 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha1/0.7.0/sha1.min.js"></script>
     <script>
+        $(document).ready(() => {
+            $.ajax({
+                url: window.location.href + '/getuserlist',
+                method: 'GET',
+                contentType: 'application/json',
+                success: (data, status) => {
+                    console.log(data)
+                    list = JSON.parse(data.message)
+                    list.forEach((curval, index) => {
+                        $('#dropdownmenu').append('<a class="dropdown-item" href="#">' + curval['username'] + '</a>')
+                    })
+
+                },
+                error: (data, status) => {
+                    $('#testp').text(data.responseJSON['message'])
+                }
+            }
+            )
+        })
         form = $('#user_form')
         form.on('submit', function (event) {
             event.preventDefault()
@@ -58,8 +139,8 @@
                 password: passwordtx
             }
             $.ajax({
-                url: 'http://127.0.0.1:8000/dashboard/createuser',
-                method:'POST',
+                url: window.location.href + '/createuser',
+                method: 'POST',
                 data: JSON.stringify(payload),
                 contentType: 'application/json',
                 success: (data, status) => {

@@ -54,6 +54,7 @@ from typing import Annotated
 import random
 import sqlite3
 from sigma.backends.sqlite.sqlite import sqliteBackend
+import json
 Event_category = {
     "EventID": "nvarchar(10)",
     "Computer": "nvarchar(20)",
@@ -221,6 +222,20 @@ def sqlite_get_user(user: dict[str, str]) -> dict[str, str] | None:
         "password": user_res[2].__str__(),
     }
 
+def sqlite_get_user_list() -> list[dict[str, str]] | None:
+    sql = f"Select rowid, * from {usertable}"
+    cursor.execute(sql)
+    user_res = cursor.fetchall()
+    if user_res is None:
+        return None
+    user_list = []
+    for user in user_res:
+        to_append_user ={
+            'id': user[0],
+            'username': user[1].__str__()
+        }
+        user_list.append(to_append_user)
+    return user_list
 
 def sqlite_create_user(user: dict[str, str]):
     username = user["username"]
@@ -252,7 +267,9 @@ def sqlite_insert_event(userid: int, event: dict[str, str]):
         column += f', {category}'
         value += f", '{item}'"
     Query = f"insert into {usertable}({column}) values ({value})"
-    logger.debug(Query)
+    cursor.execute(Query)
+    sqlite.commit()
+    logger.debug('event inserted')
     pass
 
 def parse_user(user: userModel) -> dict[str, str]:
@@ -268,6 +285,10 @@ async def root():
 async def get_dashboard():
     dashboard = open("Dashboard.html", mode="r").read()
     return HTMLResponse(dashboard)
+
+@app.get('/dashboard/getuserlist')
+async def get_user_list():
+    return responseModel(message=f'{json.dumps(sqlite_get_user_list())}')
 
 
 @app.post("/dashboard/createuser")
@@ -342,7 +363,7 @@ async def websocket_endpoint(
             event = parse_beautifulsoup(data)
             processmonitor.CheckEvent(event=event)
     except WebSocketDisconnect:
-        logger.debug(f"{socket.client} has left")
+        logger.debug(f"{agent.username} has left")
     except Exception as e:
         logger.debug(f"error: {e}")
     finally:
