@@ -1,5 +1,5 @@
 # Event_category = {
-#     "UserID": 'integer'   
+#     "UserID": 'integer'
 #     "EventID": "nvarchar(10)",
 #     "Computer": "nvarchar(20)",
 #     "EventRecordID": "nvarchar(255)",
@@ -40,7 +40,6 @@ from fastapi import (
     status,
 )
 from fastapi.responses import HTMLResponse
-import mysql.connector.cursor
 from pydantic import BaseModel
 from bs4 import BeautifulSoup
 import logging
@@ -49,12 +48,12 @@ from sigma.rule import SigmaLogSource, SigmaRule
 from sigma.collection import SigmaCollection
 from sigma.pipelines.sysmon.sysmon import sysmon_pipeline
 import yaml
-import mysql.connector
 from typing import Annotated
 import random
 import sqlite3
 from sigma.backends.sqlite.sqlite import sqliteBackend
 import json
+
 Event_category = {
     "EventID": "nvarchar(10)",
     "Computer": "nvarchar(20)",
@@ -70,7 +69,7 @@ Event_category = {
     "Product": "nvarchar(255)",
     "Company": "nvarchar(255)",
     "OriginalFileName": "nvarchar(255)",
-    "CommandLine": 'text',
+    "CommandLine": "text",
     "CurrentDirectory": "nvarchar(255)",
     "User": "nvarchar(255)",
     "LogonGuid": "nvarchar(255)",
@@ -81,7 +80,7 @@ Event_category = {
     "ParentProcessGuid": "nvarchar(255)",
     "ParentProcessId": "nvarchar(255)",
     "ParentImage": "nvarchar(255)",
-    "ParentCommandLine": 'text',
+    "ParentCommandLine": "text",
     "ParentUser": "nvarchar(255)",
 }
 
@@ -150,7 +149,6 @@ class ProcessRule:
 
         sqlite_insert_event(self.agent.id, event_json)
         self.logged_events.append(event_json)
-        
 
     def PrintDataFrame(self):
         dataframe = pd.DataFrame(self.logged_events)
@@ -188,26 +186,27 @@ backend = sqliteBackend(pipeline)
 backend.table = "events"
 UserDB = "UserDB"
 usertable = "user"
+eventtable = "events"
 sqlite = sqlite3.connect(f"{UserDB}.db")
 cursor = sqlite.cursor()
 generated_token: list[agentModel] = []
 cursor.execute(
     f"CREATE TABLE IF NOT EXISTS {usertable} (username VARCHAR(255), password VARCHAR(255))"
 )
-cursor.execute(
-    f"CREATE TABLE IF NOT EXISTS {usertable} (username VARCHAR(255), password VARCHAR(255))"
-)
 
 
 def event_table_query() -> str:
-    Query = f'CREATE TABLE IF NOT EXISTS {usertable} ('
-    res = 'UserID integer'
+    Query = f"CREATE TABLE IF NOT EXISTS {eventtable} ("
+    res = "UserID integer"
     for category, datatype in Event_category.items():
-        res += f', {category} {datatype}'
+        res += f", {category} {datatype}"
     Query = Query + res
-    Query += ')'
+    Query += ")"
     return Query
+
+
 cursor.execute(event_table_query())
+
 
 def sqlite_get_user(user: dict[str, str]) -> dict[str, str] | None:
     sql = f"Select rowid, * from {usertable} where username = ?"
@@ -222,6 +221,7 @@ def sqlite_get_user(user: dict[str, str]) -> dict[str, str] | None:
         "password": user_res[2].__str__(),
     }
 
+
 def sqlite_get_user_list() -> list[dict[str, str]] | None:
     sql = f"Select rowid, * from {usertable}"
     cursor.execute(sql)
@@ -230,12 +230,10 @@ def sqlite_get_user_list() -> list[dict[str, str]] | None:
         return None
     user_list = []
     for user in user_res:
-        to_append_user ={
-            'id': user[0],
-            'username': user[1].__str__()
-        }
+        to_append_user = {"id": user[0], "username": user[1].__str__()}
         user_list.append(to_append_user)
     return user_list
+
 
 def sqlite_create_user(user: dict[str, str]):
     username = user["username"]
@@ -260,17 +258,53 @@ def sqlite_auth_user(user: dict[str, str]) -> bool:
         return False
     return True
 
+
 def sqlite_insert_event(userid: int, event: dict[str, str]):
-    column = 'UserID'
-    value = f'{userid}'
+    column = "UserID"
+    value = f"{userid}"
     for category, item in event.items():
-        column += f', {category}'
+        column += f", {category}"
         value += f", '{item}'"
-    Query = f"insert into {usertable}({column}) values ({value})"
+    Query = f"insert into {eventtable}({column}) values ({value})"
     cursor.execute(Query)
+    logger.debug("here")
     sqlite.commit()
-    logger.debug('event inserted')
+    logger.debug("event inserted")
     pass
+
+
+def sqlite_get_user_event() -> list[dict[str, int | str]] | None:
+    query = f"Select * from {eventtable}"
+    cursor.execute(query)
+    event_res = cursor.fetchall()
+    if event_res is None:
+        return None
+    list_dict = []
+    for event in event_res:
+        event_dict = {"UserID": event[0]}
+        index = 0
+        for category in Event_category.keys():
+            event_dict.update({category: event[index + 1]})
+            index += 1
+        list_dict.append(event_dict)
+    return list_dict
+
+def sqlite_get_detection_event() ->  list[dict[str, int | str]] | None:
+    query = f"Select * from {eventtable}"
+    cursor.execute(query)
+    event_res = cursor.fetchall()
+    if event_res is None:
+        return None
+    list_dict = []
+    for event in event_res:
+        event_dict = {"UserID": event[0]}
+        index = 0
+        for category in Event_category.keys():
+            event_dict.update({category: event[index + 1]})
+            index += 1
+        list_dict.append(event_dict)
+    return list_dict
+
 
 def parse_user(user: userModel) -> dict[str, str]:
     return {"username": user.username, "password": user.password}
@@ -286,9 +320,17 @@ async def get_dashboard():
     dashboard = open("Dashboard.html", mode="r").read()
     return HTMLResponse(dashboard)
 
-@app.get('/dashboard/getuserlist')
+
+@app.get("/dashboard/getuserlist")
 async def get_user_list():
-    return responseModel(message=f'{json.dumps(sqlite_get_user_list())}')
+    return responseModel(message=f"{json.dumps(sqlite_get_user_list())}")
+
+@app.get('/dashboard/getdetectionalert')
+async def get_detection_alert():
+
+@app.get("/dashboard/getuserevent")
+async def get_user_event():
+    return responseModel(message=f"{json.dumps(sqlite_get_user_event())}")
 
 
 @app.post("/dashboard/createuser")
@@ -375,6 +417,5 @@ async def websocket_endpoint(
 class SQL_Handler:
     def __init__(self) -> None:
         pass
-
 
 

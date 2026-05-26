@@ -42,7 +42,7 @@
                 </div>
                 <p id="testp"></p>
             </div>
-            <table class="table">
+            <table class="table table-responsive">
                 <thead>
                     <tr>
                         <th scope="col">EventID</th>
@@ -74,25 +74,7 @@
                         <th scope="col">ParentUser</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <tr>
-                        <th scope="row">1</th>
-                        <td>Mark</td>
-                        <td>Otto</td>
-                        <td>@mdo</td>
-                    </tr>
-                    <tr>
-                        <th scope="row">2</th>
-                        <td>Jacob</td>
-                        <td>Thornton</td>
-                        <td>@fat</td>
-                    </tr>
-                    <tr>
-                        <th scope="row">3</th>
-                        <td>John</td>
-                        <td>Doe</td>
-                        <td>@social</td>
-                    </tr>
+                <tbody id='tablebody'>
                 </tbody>
             </table>
         </div>
@@ -110,15 +92,44 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha1/0.7.0/sha1.min.js"></script>
     <script>
         $(document).ready(() => {
+            console.log(window.location.href + '/getuserlist')
             $.ajax({
                 url: window.location.href + '/getuserlist',
                 method: 'GET',
                 contentType: 'application/json',
                 success: (data, status) => {
-                    console.log(data)
                     list = JSON.parse(data.message)
                     list.forEach((curval, index) => {
                         $('#dropdownmenu').append('<a class="dropdown-item" href="#">' + curval['username'] + '</a>')
+                    })
+
+                },
+                error: (data, status) => {
+                    $('#testp').text(data.responseJSON['message'])
+                }
+            }
+            )
+            $.ajax({
+                url: window.location.href + '/getuserevent',
+                method: 'GET',
+                contentType: 'application/json',
+                success: (data, status) => {
+                    console.log(data)
+                    pass = false
+                    list = JSON.parse(data.message)
+                    list.forEach((curval, index) => {
+                        html = '<tr>'
+                        for (const key in curval) {
+                            if (pass == false) {
+                                pass = true
+                                continue
+
+                            }
+                            html += '<td>' + curval[key] + '</td>'
+                        }
+                        html += '</tr>'
+                        $('#tablebody').append(html)
+                        pass = false
                     })
 
                 },
