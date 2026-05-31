@@ -21,7 +21,7 @@ logsource:
   category: process_creation
 detection:
   selection:
-    NewProcessName|endswith:
+    Image|endswith:
       - \cmd.exe
       - \powershell.exe
       - \pwsh.exe # PowerShell v6

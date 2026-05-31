@@ -33,20 +33,43 @@
                 <p id="submit_msg"></p>
             </form>
             <label for="dropdownuser">Agent:</label>
-            <div class="dropdown" id="dropdownuser">
-                <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton"
-                    data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                    Dropdown button
-                </button>
-                <div class="dropdown-menu" aria-labelledby="dropdownMenuButton" id="dropdownmenu">
+            <div class="row">
+
+                <div class="dropdown" id="dropdownuser">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton"
+                        data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        Agents
+                    </button>
+                    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton" id="dropdownmenu">
+                    </div>
+                    <p id="testp"></p>
                 </div>
-                <p id="testp"></p>
+                <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                    <h4 class="navbar-brand">View</h4>
+                    <button class="navbar-toggler" type="button" data-toggle="collapse"
+                        data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent"
+                        aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+
+                    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                        <ul class="navbar-nav mr-auto">
+                            <li class="nav-item">
+                                <button class="nav-link btn" id="eventbtn">Event</button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="nav-link btn" id="detectionbtn">Detection</button>
+                            </li>
+                        </ul>
+                    </div>
+                </nav>
             </div>
-            <table class="table table-responsive">
-                <thead>
+
+            <table class="table table-responsive table-wrapper" id="eventtable">
+                <thead id="tablehead">
                     <tr>
-                        <th scope="col">EventID</th>
-                        <th scope="col">Computer</th>
+                        <th scope="col">log</th>
+                        <!-- <th scope="col">Computer</th>
                         <th scope="col">EventRecordID</th>
                         <th scope="col">TimeCreated</th>
                         <th scope="col">RuleName</th>
@@ -71,10 +94,23 @@
                         <th scope="col">ParentProcessId</th>
                         <th scope="col">ParentImage</th>
                         <th scope="col">ParentCommandLine</th>
-                        <th scope="col">ParentUser</th>
+                        <th scope="col">ParentUser</th> -->
                     </tr>
                 </thead>
-                <tbody id='tablebody'>
+                <tbody id='tablebodyevent'>
+                </tbody>
+            </table>
+            <table class="table table-responsive table-wrapper" id="detectiontable">
+                <thead id="tablehead">
+                    <tr>
+                        <th scope="col">Severity</th>
+                        <th scope="col">Title</th>
+                        <th scope="col">Description</th>
+                        <th scope="col">TimeCreated</th>
+                        <th scope="col">RuleName</th>
+                    </tr>
+                </thead>
+                <tbody id='tablebodydetection'>
                 </tbody>
             </table>
         </div>
@@ -91,8 +127,20 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha1/0.7.0/sha1.min.js"></script>
     <script>
+        iseventview = true
+        eventtable = $('#eventtable')
+        detectiontable = $('#detectiontable')
+        function updatetable() {
+            if (iseventview) {
+                eventtable.removeClass('d-none')
+                detectiontable.addClass('d-none')
+            } else {
+                detectiontable.removeClass('d-none')
+                eventtable.addClass('d-none')
+            }
+        }
         $(document).ready(() => {
-            console.log(window.location.href + '/getuserlist')
+            updatetable()
             $.ajax({
                 url: window.location.href + '/getuserlist',
                 method: 'GET',
@@ -114,6 +162,34 @@
                 method: 'GET',
                 contentType: 'application/json',
                 success: (data, status) => {
+                    pass = false
+                    list = JSON.parse(data.message)
+                    list.forEach((curval, index) => {
+                        html = '<tr>'
+                        for (const key in curval) {
+                            if (pass == false) {
+                                pass = true
+                                continue
+
+                            }
+                            html += '<td>' + '<bold>'+key +' </bold>' + ': ' + curval[key] + '</td>'
+                        }
+                        html += '</tr>'
+                        $('#tablebodyevent').append(html)
+                        pass = false
+                    })
+
+                },
+                error: (data, status) => {
+                    $('#testp').text(data.responseJSON['message'])
+                }
+            }
+            )
+            $.ajax({
+                url: window.location.href + '/getdetectionalert',
+                method: 'GET',
+                contentType: 'application/json',
+                success: (data, status) => {
                     console.log(data)
                     pass = false
                     list = JSON.parse(data.message)
@@ -128,7 +204,7 @@
                             html += '<td>' + curval[key] + '</td>'
                         }
                         html += '</tr>'
-                        $('#tablebody').append(html)
+                        $('#tablebodydetection').append(html)
                         pass = false
                     })
 
@@ -164,7 +240,28 @@
             }
             )
         })
+        $('#eventbtn').on('click', () => {
+            if (iseventview == true) {
+                return
+            }
+            iseventview = true
+            updatetable()
+        })
+        $('#detectionbtn').on('click', () => {
+            if (iseventview == false) {
+                return
+            }
+            iseventview = false
+            updatetable()
+        })
     </script>
+    <style>
+        .table-wrapper {
+            max-height: 500px;
+            overflow: auto;
+            display: inline-block;
+        }
+    </style>
 </body>
 
 </html>

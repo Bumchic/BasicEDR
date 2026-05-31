@@ -29,6 +29,10 @@
 #     "ParentUser": "nvarchar(255)",
 # }
 
+import asyncio
+from enum import Enum
+import threading
+
 from fastapi import (
     FastAPI,
     WebSocket,
@@ -40,6 +44,8 @@ from fastapi import (
     status,
 )
 from fastapi.responses import HTMLResponse
+from httpx import stream
+from numpy import integer
 from pydantic import BaseModel
 from bs4 import BeautifulSoup
 import logging
@@ -52,7 +58,16 @@ from typing import Annotated
 import random
 import sqlite3
 from sigma.backends.sqlite.sqlite import sqliteBackend
+from sigma.backends.elasticsearch.elasticsearch_eql import EqlBackend
+from sigma.backends.dictquery.dictquery import DictQueryBackend
 import json
+from sigma.processing.pipeline import ProcessingPipeline
+from sigma.conversion.base import Backend
+from elasticsearch import Elasticsearch
+import dictquery
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
+import queue
 
 Event_category = {
     "EventID": "nvarchar(10)",
@@ -108,9 +123,80 @@ class userModel(BaseModel):
 class responseModel(BaseModel):
     message: str
 
+    
+class serverityEnum(Enum):
+    high = 'high'
+    medium = 'medium'
+    low = 'low'
+
+class event_table:
+    class attribute:
+        userid = 'userid'
+        rowid = 'rowid'
+        TimeCreated = 'TimeCreated'
+        log = 'log'
+    def __init__(self, log: str | dict, TimeCreated: str, rowid:int | None = None, userid: int | None = None) -> None:
+        self.log = log
+        self.rowid = rowid
+        self.userid = userid
+        self.TimeCreated = TimeCreated
+        pass
+    
+    def tojson(self, includerowid: bool) -> str:
+        return json.dumps(self.todict(includerowid))
+
+    def getuseridjson(self) -> str:
+        dict = {
+            self.attribute.userid : self.userid
+        }
+        return json.dumps(dict)
+    
+    def getuserid(self) -> int|None:
+        return self.userid
+    
+    def getTimeCreated(self) -> str:
+        return self.TimeCreated
+    def getTimeCreatedjson(self) -> str:
+        return json.dumps({self.attribute.TimeCreated: self.TimeCreated})
+
+
+    def getlogjson(self) -> str:
+        if isinstance(self.log, str):
+            return self.log
+        res = json.dumps(self.getlogdict())
+        return res
+
+    def getlogdict(self) -> dict[str, str]:
+        if isinstance(self.log, str):
+            event_dict: dict[str, str] = json.loads(self.log)
+            res:dict[str, str] = {}
+            for key, value in event_dict.items():
+                res.update({(key, value)})
+            return res
+        else:
+            return self.log
+
+    def todict(self, includerowid: bool) -> dict[str, str | int | None]:
+        res:dict[str, str | int | None]
+        if includerowid:
+            res  = {
+            self.attribute.rowid: self.rowid,
+            self.attribute.userid: self.userid,
+        }
+        else:
+            res = {
+            self.attribute.userid: self.userid,
+        }
+        res.update({self.attribute.TimeCreated: self.getTimeCreated()})
+        res.update(self.getlogdict())
+        return res
+    def __str__(self) -> str:
+        return self.tojson(True)
+
 
 class ProcessRule:
     logged_events = []
+
 
     def __init__(self, Host: str, Port: int, agent: agentModel):
         self.Host = Host
@@ -118,7 +204,7 @@ class ProcessRule:
         self.agent = agent
 
     def CheckEvent(self, event: BeautifulSoup):
-        event_json = {}
+        event_dict = {}
 
         def get_text(tag: str):
             foundtag = event.find(tag)
@@ -135,20 +221,22 @@ class ProcessRule:
                 if value is not None:
                     return value
             return None
-
-        event_json["EventID"] = get_text("EventID")
-        event_json["Computer"] = get_text("Computer")
-        event_json["EventRecordID"] = get_text("EventRecordID")
-        event_json["TimeCreated"] = get_attribute("TimeCreated", "SystemTime")
-
+        eventid = get_text("EventID")
+        assert eventid is not None
+        event_dict["EventID"] = int(eventid)
+        event_dict["Computer"] = get_text("Computer")
+        event_dict["EventRecordID"] = get_text("EventRecordID")
+        event_dict["TimeCreated"] = get_attribute("TimeCreated", "SystemTime")
         eventdata = event.find("EventData")
         if eventdata is not None:
             for data in eventdata.find_all("Data"):
                 name = data.get("Name")
-                event_json[name] = data.getText()
+                event_dict[name] = data.getText()
+        event_obj = event_table(log=event_dict, userid=self.agent.id, TimeCreated=str(event_dict['TimeCreated']))
+        sqlite_insert_event(self.agent.id, event_obj)
+        self.logged_events.append(event_dict)
+    
 
-        sqlite_insert_event(self.agent.id, event_json)
-        self.logged_events.append(event_json)
 
     def PrintDataFrame(self):
         dataframe = pd.DataFrame(self.logged_events)
@@ -160,59 +248,29 @@ class ProcessRule:
         dataframe = dataframe.sort_values("TimeCreated").set_index("TimeCreated")
         logger.debug(dataframe)
 
-
 def parse_beautifulsoup(event: eventModel) -> BeautifulSoup:
     soup = BeautifulSoup(event.event, features="xml")
     return soup
 
-
-print("program running")
-app = FastAPI()
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s:\n\t%(message)s"
-)
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-MonitorList: list[ProcessRule] = []
-rules: SigmaCollection
-backend: sqliteBackend
-with open("pipeline\\win-os-payload encoded PowerShell deployed (command).yaml") as f:
-    data = yaml.full_load(f)
-    string = yaml.dump(data)
-    rules = SigmaCollection.from_yaml(string)
-pipeline = sysmon_pipeline()
-backend = sqliteBackend(pipeline)
-backend.table = "events"
-UserDB = "UserDB"
-usertable = "user"
-eventtable = "events"
-sqlite = sqlite3.connect(f"{UserDB}.db")
-cursor = sqlite.cursor()
-generated_token: list[agentModel] = []
-cursor.execute(
-    f"CREATE TABLE IF NOT EXISTS {usertable} (username VARCHAR(255), password VARCHAR(255))"
-)
+def parse_rule_json(Title: str, Description: str, Severity: str, Query: list[str]) -> dict:
+    rule = {
+        'Title' : Title,
+        'Description': Description,
+        'Severity': serverityEnum[Severity].value,
+        'Query': Query
+    }
+    return rule
 
 
-def event_table_query() -> str:
-    Query = f"CREATE TABLE IF NOT EXISTS {eventtable} ("
-    res = "UserID integer"
-    for category, datatype in Event_category.items():
-        res += f", {category} {datatype}"
-    Query = Query + res
-    Query += ")"
-    return Query
-
-
-cursor.execute(event_table_query())
 
 
 def sqlite_get_user(user: dict[str, str]) -> dict[str, str] | None:
+    cursor = sqlite.cursor()
     sql = f"Select rowid, * from {usertable} where username = ?"
     values = (user["username"],)
     cursor.execute(sql, values)
     user_res = cursor.fetchone()
+    cursor.close()
     if user_res is None:
         return None
     return {
@@ -221,11 +279,12 @@ def sqlite_get_user(user: dict[str, str]) -> dict[str, str] | None:
         "password": user_res[2].__str__(),
     }
 
-
 def sqlite_get_user_list() -> list[dict[str, str]] | None:
+    cursor = sqlite.cursor()
     sql = f"Select rowid, * from {usertable}"
     cursor.execute(sql)
     user_res = cursor.fetchall()
+    cursor.close()
     if user_res is None:
         return None
     user_list = []
@@ -236,17 +295,19 @@ def sqlite_get_user_list() -> list[dict[str, str]] | None:
 
 
 def sqlite_create_user(user: dict[str, str]):
+    cursor = sqlite.cursor()
     username = user["username"]
     password = user["password"]
     sql = f"insert into {usertable}(username, password) values (?, ?)"
     value = (username, password)
     cursor.execute(sql, value)
+    cursor.close()
     sqlite.commit()
     logger.debug("user inserted")
 
 
 def sqlite_auth_user(user: dict[str, str]) -> bool:
-    logger.debug(user["password"])
+    cursor = sqlite.cursor()
     sql = f"Select * from {usertable} where username = ? and password = ?"
     values = (
         user["username"],
@@ -254,60 +315,78 @@ def sqlite_auth_user(user: dict[str, str]) -> bool:
     )
     cursor.execute(sql, values)
     user_res = cursor.fetchone()
+    cursor.close()
     if user_res is None:
         return False
     return True
 
-
-def sqlite_insert_event(userid: int, event: dict[str, str]):
-    column = "UserID"
-    value = f"{userid}"
-    for category, item in event.items():
-        column += f", {category}"
-        value += f", '{item}'"
-    Query = f"insert into {eventtable}({column}) values ({value})"
-    cursor.execute(Query)
-    logger.debug("here")
+def sqlite_insert_event(userid: int, event: event_table):
+    cursor = sqlite.cursor()
+    Query = f"insert into {eventtable}(userid, TimeCreated, log) values (?, ?, ?)"    
+    values = (event.getuserid(), event.getTimeCreated(), event.getlogjson())
+    cursor.execute(Query, values)
+    cursor.close()
     sqlite.commit()
     logger.debug("event inserted")
     pass
 
 
-def sqlite_get_user_event() -> list[dict[str, int | str]] | None:
-    query = f"Select * from {eventtable}"
+def sqlite_get_user_event() -> list[dict[str, str | int| None]] | None:
+    cursor = sqlite.cursor()
+    query = f"Select rowid, * from {eventtable} order by TimeCreated desc"
     cursor.execute(query)
     event_res = cursor.fetchall()
+    cursor.close()
     if event_res is None:
         return None
-    list_dict = []
+    list_dict: list[dict[str, str| int| None]] = []
     for event in event_res:
-        event_dict = {"UserID": event[0]}
-        index = 0
-        for category in Event_category.keys():
-            event_dict.update({category: event[index + 1]})
-            index += 1
-        list_dict.append(event_dict)
+        rowid = event[0]
+        userid = event[1]
+        TimeCreated = event[2]
+        log = event[3]
+        eventobj = event_table(rowid=rowid, userid=userid, log=log, TimeCreated=TimeCreated)
+        list_dict.append(eventobj.todict(includerowid=True))
     return list_dict
 
+
 def sqlite_get_detection_event() ->  list[dict[str, int | str]] | None:
-    query = f"Select * from {eventtable}"
+    cursor = sqlite.cursor()
+    list_dict = []
+    query = f'Select rowid, * from {eventtable}'
     cursor.execute(query)
     event_res = cursor.fetchall()
+    cursor.close()
     if event_res is None:
         return None
-    list_dict = []
-    for event in event_res:
-        event_dict = {"UserID": event[0]}
-        index = 0
-        for category in Event_category.keys():
-            event_dict.update({category: event[index + 1]})
-            index += 1
-        list_dict.append(event_dict)
+    for rule in rules:           
+        for event in event_res:
+            rowid = event[0]
+            userid = event[1]
+            TimeCreated = event[2]
+            log = event[3]
+            eventobj = event_table(log=log, rowid=TimeCreated, userid=userid, TimeCreated=TimeCreated)
+            event_dict = eventobj.getlogdict()
+            detection_query = rule['Query'][0]
+            detection_query = "EventID==1 AND CommandLine LIKE '*FromBase64String*'"
+            if dictquery.match(event_dict, detection_query):
+                rowid = event[0]
+                userid = event[1]
+                event_dict = {
+                    "UserID": userid,
+                    'Title' : rule['Title'],
+                    'Description': rule['Description'],
+                    'Severity': rule['Severity'],
+                    'EventID': rowid
+                    }
+                list_dict.append(event_dict)
     return list_dict
 
 
 def parse_user(user: userModel) -> dict[str, str]:
     return {"username": user.username, "password": user.password}
+
+app = FastAPI()
 
 
 @app.get("/")
@@ -323,48 +402,67 @@ async def get_dashboard():
 
 @app.get("/dashboard/getuserlist")
 async def get_user_list():
-    return responseModel(message=f"{json.dumps(sqlite_get_user_list())}")
-
+    def FuncAdapter(data: tuple):
+        returnresponse()
+    def returnresponse():
+        return responseModel(message=f"{json.dumps(sqlite_get_user_list())}")
+    q.put((FuncAdapter, ()))
 @app.get('/dashboard/getdetectionalert')
 async def get_detection_alert():
+    def FuncAdapter(data: tuple):
+        returnresponse()
+    def returnresponse():
+        return responseModel(message=f"{json.dumps(sqlite_get_detection_event())}")
+    q.put((FuncAdapter, ()))
 
 @app.get("/dashboard/getuserevent")
 async def get_user_event():
-    return responseModel(message=f"{json.dumps(sqlite_get_user_event())}")
+    def FuncAdapter(data: tuple):
+        returnresponse()
+    def returnresponse():
+       return responseModel(message=f"{json.dumps(sqlite_get_user_event())}")
+    q.put((FuncAdapter, ()))
 
 
 @app.post("/dashboard/createuser")
 async def create_user(user: userModel, response: Response):
-    logger.debug(user)
-    user_dict = parse_user(user)
-    try:
-        if sqlite_get_user(user_dict) is not None:
-            response.status_code = status.HTTP_403_FORBIDDEN
-            return responseModel(message="User already exist")
-        sqlite_create_user(user_dict)
-        response.status_code = status.HTTP_200_OK
-        return responseModel(message="User successfully created")
-    except Exception as e:
-        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-        return responseModel(message=f"{e}")
+    def FuncAdapter(data: tuple):
+        return returnresponse(user= data[0], response=data[1])
+    def returnresponse(user: userModel, response: Response):
+        logger.debug(user)
+        user_dict = parse_user(user)
+        try:
+            if sqlite_get_user(user_dict) is not None:
+                response.status_code = status.HTTP_403_FORBIDDEN
+                return responseModel(message="User already exist")
+            sqlite_create_user(user_dict)
+            response.status_code = status.HTTP_200_OK
+            return responseModel(message="User successfully created")
+        except Exception as e:
+            response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            return responseModel(message=f"{e}")
+    q.put((FuncAdapter, (user, response)))
 
 
 @app.post("/auth")
 async def get_user(user: userModel, response: Response):
-    user_dict = parse_user(user)
-    logger.debug(user_dict)
-    if sqlite_auth_user(user_dict):
-        characters = "abcdefghijklmnopqrstuvwxyz0123456789"
-        token = "".join(random.choice(characters) for _ in range(8))
-        founduser = sqlite_get_user(user_dict)
-        assert founduser is not None
-        agent = agentModel(founduser["id"], founduser["username"], token)
-        generated_token.append(agent)
-        response.status_code = status.HTTP_200_OK
-        return responseModel(message=token)
-    response.status_code = status.HTTP_403_FORBIDDEN
-    return responseModel(message="credential invalid")
-    pass
+    def FuncAdapter(data: tuple):
+        returnresponse(user=data[0], response= data[1])
+    def returnresponse(user: userModel, response: Response):
+        user_dict = parse_user(user)
+        if sqlite_auth_user(user_dict):
+            characters = "abcdefghijklmnopqrstuvwxyz0123456789"
+            token = "".join(random.choice(characters) for _ in range(8))
+            founduser = sqlite_get_user(user_dict)
+            assert founduser is not None
+            agent = agentModel(founduser["id"], founduser["username"], token)
+            generated_token.append(agent)
+            response.status_code = status.HTTP_200_OK
+            return responseModel(message=token)
+        response.status_code = status.HTTP_403_FORBIDDEN
+        return responseModel(message="credential invalid")
+        pass
+    q.put((FuncAdapter, (user, response)))
 
 
 def get_token(socket: WebSocket, token: Annotated[str | None, Query()] = None):
@@ -386,6 +484,11 @@ def get_generated_token_from_token(token: str) -> agentModel | None:
             return iter_token
     return None
 
+def queueworker():
+    while True:
+        (func, data) = q.get()
+        func(data)
+        q.task_done()
 
 @app.websocket("/ws")
 async def websocket_endpoint(
@@ -398,24 +501,59 @@ async def websocket_endpoint(
     assert agent is not None
     processmonitor = ProcessRule(Host.host, Host.port, agent)
     MonitorList.append(processmonitor)
+    def process_event(data) -> None:
+        data = eventModel(**data)
+        event = parse_beautifulsoup(data)
+        processmonitor.CheckEvent(event=event)
     try:
         while True:
             data = await socket.receive_json()
-            data = eventModel(**data)
-            event = parse_beautifulsoup(data)
-            processmonitor.CheckEvent(event=event)
+            q.put((process_event, data))
+            await socket.send_text('received')
     except WebSocketDisconnect:
         logger.debug(f"{agent.username} has left")
     except Exception as e:
         logger.debug(f"error: {e}")
     finally:
-        logger.debug(processmonitor.PrintDataFrame())
+        q.join()
         generated_token.remove(agent)
         MonitorList.remove(processmonitor)
 
 
-class SQL_Handler:
-    def __init__(self) -> None:
-        pass
 
 
+
+print("program running")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s:\n\t%(message)s"
+)
+ThreadLock = Lock()
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+rules: list[dict] = []
+MonitorList: list[ProcessRule] = []
+#backend: DictQueryBackend
+pipelines = sysmon_pipeline()
+backend = DictQueryBackend(pipelines)
+with open("pipeline\\win-os-payload encoded PowerShell deployed (command).yaml") as f:
+    data = yaml.full_load(f)
+    yaml_string = yaml.dump(data)
+    rule_yaml = SigmaCollection.from_yaml(yaml_string)
+    query = backend.convert(rule_yaml) #type: list[str]
+    rules.append(parse_rule_json(Title=data['title'], Description=data['description'], Severity=data['level'], Query=query))
+UserDB = "UserDB"
+EventDB = 'EventDB'
+usertable = "user"
+eventtable = "events"
+cursor: sqlite3.Cursor
+sqlite: sqlite3.Connection
+sqlite = sqlite3.connect(f"{UserDB}.db", check_same_thread=False)
+generated_token: list[agentModel] = []
+cursor = sqlite.cursor()
+cursor.execute(
+    f"CREATE TABLE IF NOT EXISTS {usertable} (username VARCHAR(255), password VARCHAR(255))"
+)
+cursor.execute(f"CREATE TABLE IF NOT EXISTS {eventtable} (userid integer, TimeCreated text,log text)")
+cursor.close()
+q = queue.Queue()
+threading.Thread(target= queueworker, daemon=True).start()
