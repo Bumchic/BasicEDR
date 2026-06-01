@@ -64,12 +64,12 @@
                     </div>
                 </nav>
             </div>
-
-            <table class="table table-responsive table-wrapper" id="eventtable">
-                <thead id="tablehead">
-                    <tr>
-                        <th scope="col">log</th>
-                        <!-- <th scope="col">Computer</th>
+            <div id="eventtable">
+                <table class="table table-responsive table-wrapper">
+                    <thead id="tablehead">
+                        <tr>
+                            <th scope="col">log</th>
+                            <!-- <th scope="col">Computer</th>
                         <th scope="col">EventRecordID</th>
                         <th scope="col">TimeCreated</th>
                         <th scope="col">RuleName</th>
@@ -95,24 +95,37 @@
                         <th scope="col">ParentImage</th>
                         <th scope="col">ParentCommandLine</th>
                         <th scope="col">ParentUser</th> -->
-                    </tr>
-                </thead>
-                <tbody id='tablebodyevent'>
-                </tbody>
-            </table>
-            <table class="table table-responsive table-wrapper" id="detectiontable">
-                <thead id="tablehead">
-                    <tr>
-                        <th scope="col">Severity</th>
-                        <th scope="col">Title</th>
-                        <th scope="col">Description</th>
-                        <th scope="col">TimeCreated</th>
-                        <th scope="col">RuleName</th>
-                    </tr>
-                </thead>
-                <tbody id='tablebodydetection'>
-                </tbody>
-            </table>
+                        </tr>
+                    </thead>
+                    <tbody id='tablebodyevent'>
+                    </tbody>
+                </table>
+                <div id="page-selection-event"></div>
+            </div>
+            <div id="detectiontable">
+                <table class="table table-responsive table-wrapper" >
+                    <thead id="tablehead">
+                        <tr>
+                            <th scope="col">Severity</th>
+                            <th scope="col">Title</th>
+                            <th scope="col">Description</th>
+                            <th scope="col">TimeCreated</th>
+                            <th scope="col">RuleName</th>
+                        </tr>
+                    </thead>
+                    <tbody id='tablebodydetection'>
+                    </tbody>
+                </table>
+                <div id="page-selection-detection"></div>
+            </div>
+            <div class="col">
+                <div class="row">
+                    <input id="gotopageinput" inputmode="numeric" type="number" min='0' step="1">
+                </div>
+                <div class="row">
+                    <button class="btn btn-success" id="gotopagebtn">Go To Page</button>
+                </div>
+            </div>
         </div>
     </div>
     <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
@@ -126,6 +139,10 @@
         crossorigin="anonymous"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha1/0.7.0/sha1.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/bootpag@5.0.1/dist/jquery.bootpag.min.js"></script>
+    <script type="text/javascript"
+        src="https://cdn.jsdelivr.net/npm/jquery-validation@1.19.5/dist/jquery.validate.min.js"></script>
+
     <script>
         iseventview = true
         eventtable = $('#eventtable')
@@ -151,6 +168,7 @@
                         $('#dropdownmenu').append('<a class="dropdown-item" href="#">' + curval['username'] + '</a>')
                     })
 
+
                 },
                 error: (data, status) => {
                     $('#testp').text(data.responseJSON['message'])
@@ -163,21 +181,44 @@
                 contentType: 'application/json',
                 success: (data, status) => {
                     pass = false
+                    page_list = []
                     list = JSON.parse(data.message)
+                    console.log(list.length)
+                    html = ''
+                    ind = 0
                     list.forEach((curval, index) => {
-                        html = '<tr>'
+                        html += '<tr>'
                         for (const key in curval) {
                             if (pass == false) {
                                 pass = true
                                 continue
 
                             }
-                            html += '<td>' + '<bold>'+key +' </bold>' + ': ' + curval[key] + '</td>'
+                            html += '<td>' + '<bold>' + key + ' </bold>' + ': ' + curval[key] + '</td>'
                         }
                         html += '</tr>'
-                        $('#tablebodyevent').append(html)
                         pass = false
+                        if (ind == 9) {
+                            page_list.push(html)
+                            ind = 0
+                            html = ''
+
+                        } else {
+                            ind++
+                        }
                     })
+
+                    page_list.push(html)
+                    $('#page-selection-event').bootpag({
+                        total: page_list.length,
+                        page: 1,
+                        maxVisible: 10
+                    }).on('page', function (event, num) {
+                        $('#tablebodyevent').empty()
+                        $('#tablebodyevent').append(page_list[num-1])
+                        $(this).bootpag({ page: num })
+                    })
+                    $('#page-selection-event').trigger('page', [1])
 
                 },
                 error: (data, status) => {
@@ -192,21 +233,43 @@
                 success: (data, status) => {
                     console.log(data)
                     pass = false
+                    page_list_detect = []
                     list = JSON.parse(data.message)
+                    html = ''
+                    ind = 0
                     list.forEach((curval, index) => {
-                        html = '<tr>'
+                        html += '<tr>'
                         for (const key in curval) {
                             if (pass == false) {
                                 pass = true
                                 continue
 
                             }
-                            html += '<td>' + curval[key] + '</td>'
+                            html += '<td>' + '<bold>' + key + ' </bold>' + ': ' + curval[key] + '</td>'
                         }
                         html += '</tr>'
-                        $('#tablebodydetection').append(html)
                         pass = false
+                        if (ind == 9) {
+                            page_list_detect.push(html)
+                            ind = 0
+                            html = ''
+
+                        } else {
+                            ind++
+                        }
                     })
+                    page_list_detect.push(html)
+                    $('#page-selection-detection').bootpag({
+                        total: page_list_detect.length,
+                        page: 1,
+                        maxVisible: 10
+                    }).on('page', function (event, num) {
+                        $('#tablebodydetection').empty()
+                        $('#tablebodydetection').append(page_list_detect[num-1])
+                        $(this).bootpag({ page: num })
+                    })
+                    $('#page-selection-detection').trigger('page', [1])
+
 
                 },
                 error: (data, status) => {
@@ -253,6 +316,19 @@
             }
             iseventview = false
             updatetable()
+        })
+        $('#gotopagebtn').on('click', () => {
+            page_selection = $('#page-selection-event') 
+            if (!iseventview){
+                page_selection = $('#page-selection-detection')
+            }
+            input = $('#gotopageinput').val()
+            input = parseInt(input)
+            if (!Number.isInteger(input)) {
+                alert('input valid value')
+                return
+            }
+            page_selection.trigger('page', [input])
         })
     </script>
     <style>

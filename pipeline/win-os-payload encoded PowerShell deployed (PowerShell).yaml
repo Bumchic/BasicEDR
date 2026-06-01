@@ -18,10 +18,11 @@ author: mdecrevoisier
 status: experimental
 logsource:
   product: windows
-  category:
-    - ps_module
-    - ps_classic_script
-    - ps_script
+  category: process_creation
+  # category:
+  #   - ps_module
+  #   - ps_classic_script
+  #   - ps_script
 detection:
   selection_powershell_native:
     EventID: 800

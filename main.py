@@ -68,6 +68,7 @@ import dictquery
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 import queue
+import os
 
 Event_category = {
     "EventID": "nvarchar(10)",
@@ -171,10 +172,16 @@ class event_table:
             event_dict: dict[str, str] = json.loads(self.log)
             res:dict[str, str] = {}
             for key, value in event_dict.items():
+                # if isinstance(value, str):
+                #     value = value.encode('unicode_escape').decode()
                 res.update({(key, value)})
-            return res
         else:
-            return self.log
+            res = self.log
+        if isinstance(res, dict):
+            for key, value in res.items():
+                if isinstance(value, str):
+                    res[key] = value.encode('unicode_escape').decode()
+        return res
 
     def todict(self, includerowid: bool) -> dict[str, str | int | None]:
         res:dict[str, str | int | None]
@@ -262,10 +269,12 @@ def parse_rule_json(Title: str, Description: str, Severity: str, Query: list[str
     return rule
 
 
-
+def turntorawstring(string: str) -> str:
+    return string.encode('unicode_escape').decode()
 
 def sqlite_get_user(user: dict[str, str]) -> dict[str, str] | None:
-    cursor = sqlite.cursor()
+    conn = sqlite3.connect(f"{UserDB}.db")
+    cursor = conn.cursor()
     sql = f"Select rowid, * from {usertable} where username = ?"
     values = (user["username"],)
     cursor.execute(sql, values)
@@ -280,11 +289,13 @@ def sqlite_get_user(user: dict[str, str]) -> dict[str, str] | None:
     }
 
 def sqlite_get_user_list() -> list[dict[str, str]] | None:
-    cursor = sqlite.cursor()
+    conn = sqlite3.connect(f"{UserDB}.db")
+    cursor = conn.cursor()
     sql = f"Select rowid, * from {usertable}"
     cursor.execute(sql)
     user_res = cursor.fetchall()
     cursor.close()
+    conn.close()
     if user_res is None:
         return None
     user_list = []
@@ -307,7 +318,8 @@ def sqlite_create_user(user: dict[str, str]):
 
 
 def sqlite_auth_user(user: dict[str, str]) -> bool:
-    cursor = sqlite.cursor()
+    conn = sqlite3.connect(f"{UserDB}.db")
+    cursor = conn.cursor()
     sql = f"Select * from {usertable} where username = ? and password = ?"
     values = (
         user["username"],
@@ -332,7 +344,8 @@ def sqlite_insert_event(userid: int, event: event_table):
 
 
 def sqlite_get_user_event() -> list[dict[str, str | int| None]] | None:
-    cursor = sqlite.cursor()
+    conn = sqlite3.connect(f"{UserDB}.db")
+    cursor = conn.cursor()
     query = f"Select rowid, * from {eventtable} order by TimeCreated desc"
     cursor.execute(query)
     event_res = cursor.fetchall()
@@ -351,9 +364,10 @@ def sqlite_get_user_event() -> list[dict[str, str | int| None]] | None:
 
 
 def sqlite_get_detection_event() ->  list[dict[str, int | str]] | None:
-    cursor = sqlite.cursor()
+    conn = sqlite3.connect(f"{UserDB}.db")
+    cursor = conn.cursor()
     list_dict = []
-    query = f'Select rowid, * from {eventtable}'
+    query = f'Select rowid, * from {eventtable} order by TimeCreated Desc limit 5'
     cursor.execute(query)
     event_res = cursor.fetchall()
     cursor.close()
@@ -365,11 +379,26 @@ def sqlite_get_detection_event() ->  list[dict[str, int | str]] | None:
             userid = event[1]
             TimeCreated = event[2]
             log = event[3]
+
             eventobj = event_table(log=log, rowid=TimeCreated, userid=userid, TimeCreated=TimeCreated)
+            
             event_dict = eventobj.getlogdict()
-            detection_query = rule['Query'][0]
-            detection_query = "EventID==1 AND CommandLine LIKE '*FromBase64String*'"
-            if dictquery.match(event_dict, detection_query):
+            # logger.debug(event_dict)
+            # logger.debug(r'EventID==1 AND (Image LIKE "*\\Code.exe")')
+            # if event_dict.get('Image') is not None:
+                #event_dict['Image'] = event_dict['Image'].encode('unicode_escape').decode()
+                # logger.debug(event_dict['Image'])
+            # test_dict ={
+            #     'EventID': 1,
+            #     'Image' : r'fdsfdsa\\Code.exe'
+            # }
+            detection_query = dictquery.compile(rule['Query'][0].encode('unicode_escape').decode()) 
+            #detection_query = dictquery.compile(r'EventID==3 AND (Image LIKE "*\\Code.exe")') 
+            # if detection_query.match(test_dict):
+            #     logger.debug('True')
+            # else:
+            #     logger.debug(detection_query.evaluate(event_dict))
+            if detection_query.match(event_dict):
                 rowid = event[0]
                 userid = event[1]
                 event_dict = {
@@ -377,9 +406,13 @@ def sqlite_get_detection_event() ->  list[dict[str, int | str]] | None:
                     'Title' : rule['Title'],
                     'Description': rule['Description'],
                     'Severity': rule['Severity'],
-                    'EventID': rowid
+                    'EventRowID': rowid
                     }
                 list_dict.append(event_dict)
+            # else:
+            #     if event_dict.get('Image') is not None:
+            #         logger.debug(event_dict['EventID'])
+            #         logger.debug(event_dict['Image'].encode('unicode_escape').decode())
     return list_dict
 
 
@@ -402,32 +435,21 @@ async def get_dashboard():
 
 @app.get("/dashboard/getuserlist")
 async def get_user_list():
-    def FuncAdapter(data: tuple):
-        returnresponse()
-    def returnresponse():
-        return responseModel(message=f"{json.dumps(sqlite_get_user_list())}")
-    q.put((FuncAdapter, ()))
+    return responseModel(message=f"{json.dumps(sqlite_get_user_list())}")
+
 @app.get('/dashboard/getdetectionalert')
 async def get_detection_alert():
-    def FuncAdapter(data: tuple):
-        returnresponse()
-    def returnresponse():
-        return responseModel(message=f"{json.dumps(sqlite_get_detection_event())}")
-    q.put((FuncAdapter, ()))
+    return responseModel(message=f"{json.dumps(sqlite_get_detection_event())}")
 
 @app.get("/dashboard/getuserevent")
 async def get_user_event():
-    def FuncAdapter(data: tuple):
-        returnresponse()
-    def returnresponse():
-       return responseModel(message=f"{json.dumps(sqlite_get_user_event())}")
-    q.put((FuncAdapter, ()))
+    return responseModel(message=f"{json.dumps(sqlite_get_user_event())}")
 
 
 @app.post("/dashboard/createuser")
 async def create_user(user: userModel, response: Response):
     def FuncAdapter(data: tuple):
-        return returnresponse(user= data[0], response=data[1])
+        return sqlite_create_user(data[0])
     def returnresponse(user: userModel, response: Response):
         logger.debug(user)
         user_dict = parse_user(user)
@@ -435,34 +457,32 @@ async def create_user(user: userModel, response: Response):
             if sqlite_get_user(user_dict) is not None:
                 response.status_code = status.HTTP_403_FORBIDDEN
                 return responseModel(message="User already exist")
-            sqlite_create_user(user_dict)
+            q.put((FuncAdapter, (user_dict)))
             response.status_code = status.HTTP_200_OK
             return responseModel(message="User successfully created")
         except Exception as e:
             response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
             return responseModel(message=f"{e}")
-    q.put((FuncAdapter, (user, response)))
 
 
 @app.post("/auth")
 async def get_user(user: userModel, response: Response):
-    def FuncAdapter(data: tuple):
-        returnresponse(user=data[0], response= data[1])
-    def returnresponse(user: userModel, response: Response):
-        user_dict = parse_user(user)
-        if sqlite_auth_user(user_dict):
+    user_dict = parse_user(user)
+    if sqlite_auth_user(user_dict):
+        while True:
             characters = "abcdefghijklmnopqrstuvwxyz0123456789"
             token = "".join(random.choice(characters) for _ in range(8))
-            founduser = sqlite_get_user(user_dict)
-            assert founduser is not None
-            agent = agentModel(founduser["id"], founduser["username"], token)
-            generated_token.append(agent)
-            response.status_code = status.HTTP_200_OK
-            return responseModel(message=token)
-        response.status_code = status.HTTP_403_FORBIDDEN
-        return responseModel(message="credential invalid")
-        pass
-    q.put((FuncAdapter, (user, response)))
+            if token not in generated_token:
+                break
+        founduser = sqlite_get_user(user_dict)
+        assert founduser is not None
+        agent = agentModel(founduser["id"], founduser["username"], token)
+        generated_token.append(agent)
+        response.status_code = status.HTTP_200_OK
+        return responseModel(message=token)
+    response.status_code = status.HTTP_403_FORBIDDEN
+    return responseModel(message="credential invalid")
+        
 
 
 def get_token(socket: WebSocket, token: Annotated[str | None, Query()] = None):
@@ -535,12 +555,15 @@ MonitorList: list[ProcessRule] = []
 #backend: DictQueryBackend
 pipelines = sysmon_pipeline()
 backend = DictQueryBackend(pipelines)
-with open("pipeline\\win-os-payload encoded PowerShell deployed (command).yaml") as f:
-    data = yaml.full_load(f)
-    yaml_string = yaml.dump(data)
-    rule_yaml = SigmaCollection.from_yaml(yaml_string)
-    query = backend.convert(rule_yaml) #type: list[str]
-    rules.append(parse_rule_json(Title=data['title'], Description=data['description'], Severity=data['level'], Query=query))
+folderpath = 'pipeline'
+for e in os.scandir(folderpath):
+    if e.is_file():
+        with open(e.path, 'r') as f:
+            data = yaml.full_load(f)
+            yaml_string = yaml.dump(data)
+            rule_yaml = SigmaCollection.from_yaml(yaml_string)
+            query = backend.convert(rule_yaml) #type: list[str]
+            rules.append(parse_rule_json(Title=data['title'], Description=data['description'], Severity=data['level'], Query=query))
 UserDB = "UserDB"
 EventDB = 'EventDB'
 usertable = "user"
