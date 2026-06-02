@@ -575,7 +575,6 @@ for dir in os.scandir(folderpath):
                         rule = SigmaCorrelationRule.from_yaml(yaml_string)
                     rule_yaml = SigmaCollection(init_rules=rule_list)
                     print(rule_yaml.names_to_rules)
-                    logger.debug()
                     rule_yaml = rule_yaml.from_yaml(yaml_string)
                     rule_list.append(rule)
                     query = backend.convert(rule_yaml) #type: list[str]
