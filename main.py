@@ -63,6 +63,7 @@ from sigma.backends.dictquery.dictquery import DictQueryBackend
 import json
 from sigma.processing.pipeline import ProcessingPipeline
 from sigma.conversion.base import Backend
+from sigma.correlations import SigmaCorrelationRule
 from elasticsearch import Elasticsearch
 import dictquery
 from concurrent.futures import ThreadPoolExecutor
@@ -129,6 +130,7 @@ class serverityEnum(Enum):
     high = 'high'
     medium = 'medium'
     low = 'low'
+    informational = 'infoamtional'
 
 class event_table:
     class attribute:
@@ -556,14 +558,27 @@ MonitorList: list[ProcessRule] = []
 pipelines = sysmon_pipeline()
 backend = DictQueryBackend(pipelines)
 folderpath = 'pipeline'
-for e in os.scandir(folderpath):
-    if e.is_file():
-        with open(e.path, 'r') as f:
-            data = yaml.full_load(f)
-            yaml_string = yaml.dump(data)
-            rule_yaml = SigmaCollection.from_yaml(yaml_string)
-            query = backend.convert(rule_yaml) #type: list[str]
-            rules.append(parse_rule_json(Title=data['title'], Description=data['description'], Severity=data['level'], Query=query))
+for dir in os.scandir(folderpath):
+    for e in os.scandir(dir.path):
+        if e.is_file():
+            with open(e.path, 'r') as f:
+                datas = yaml.load_all(f, Loader=yaml.FullLoader)
+                index = 0
+                rule_list = []
+                rule_yaml: SigmaCollection
+                for data in datas:
+                    yaml_string = yaml.dump(data)
+                    rule: SigmaRule | SigmaCorrelationRule
+                    try:
+                        rule = SigmaRule.from_yaml(yaml_string)
+                    except Exception:
+                        rule = SigmaCorrelationRule.from_yaml(yaml_string)
+                    rule_yaml = SigmaCollection(init_rules=rule_list)
+                    print(rule_yaml.names_to_rules)
+                    rule_yaml = rule_yaml.from_yaml(yaml_string)
+                    rule_list.append(rule)
+                    query = backend.convert(rule_yaml) #type: list[str]
+                    rules.append(parse_rule_json(Title=data['title'], Description=data['description'], Severity=data['level'], Query=query))
 UserDB = "UserDB"
 EventDB = 'EventDB'
 usertable = "user"
