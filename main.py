@@ -58,7 +58,7 @@ import yaml
 from typing import Annotated
 import random
 import sqlite3
-from sigma.backends.sqlite.sqlite import sqliteBackend
+from sigma.backends.pd_df.pd_df import PandasDataFramePythonBackend
 import json
 from sigma.processing.pipeline import ProcessingPipeline
 from sigma.conversion.base import Backend
@@ -185,10 +185,10 @@ class event_table:
                 res.update({(key, value)})
         else:
             res = self.log
-        if isinstance(res, dict):
-            for key, value in res.items():
-                if isinstance(value, str):
-                    res[key] = value
+        # if isinstance(res, dict):
+        #     for key, value in res.items():
+        #         if isinstance(value, str):
+        #             res[key] = value
         return res
 
     def getlogdict(self) -> dict[str, str]:
@@ -206,6 +206,8 @@ class event_table:
                 if isinstance(value, str):
                     res[key] = value.encode("unicode_escape").decode()
         return res
+    
+
 
     def todict(
         self, includerowid: bool, rawstringencode: bool
@@ -405,6 +407,16 @@ def sqlite_get_user_event(id: int) -> list[dict[str, str | int | None]] | None:
 
 
 def sqlite_get_detection_event(id: int) -> list[dict[str, int | str]] | None:
+    def PrintDataFrame(self):
+        dataframe = pd.DataFrame(self.logged_events)
+        dataframe["EventID"] = pd.to_numeric(dataframe["EventID"], errors="coerce")
+        dataframe["TimeCreated"] = pd.to_datetime(
+            dataframe["TimeCreated"], errors="coerce", utc=True
+        )
+
+        dataframe = dataframe.sort_values("TimeCreated").set_index("TimeCreated")
+        logger.debug(dataframe)
+
     conn = sqlite3.connect(f"{UserDB}.db")
     cursor = conn.cursor()
     list_dict = []
@@ -414,53 +426,57 @@ def sqlite_get_detection_event(id: int) -> list[dict[str, int | str]] | None:
     cursor.close()
     if event_res is None:
         return None
+    dict_list = []
+    for event in event_res:
+        rowid = event[0]
+        userid = event[1]
+        TimeCreated = event[2]
+        log = event[3]
+        eventobj = event_table(
+            log=log, rowid=TimeCreated, userid=userid, TimeCreated=TimeCreated
+        )
+        dict_list.append(eventobj.todict(includerowid=True, rawstringencode=False))
+        
+    df = pd.DataFrame(dict_list)
     for rule in rules:
-        for event in event_res:
-            rowid = event[0]
-            userid = event[1]
-            TimeCreated = event[2]
-            log = event[3]
-            eventobj = event_table(
-                log=log, rowid=TimeCreated, userid=userid, TimeCreated=TimeCreated
-            )
-            try:
-                event_dict = eventobj.getlogdict()
-                # logger.debug(event_dict)
-                # logger.debug(r'EventID==1 AND (Image LIKE "*\\Code.exe")')
-                # if event_dict.get('Image') is not None:
-                # event_dict['Image'] = event_dict['Image'].encode('unicode_escape').decode()
-                # logger.debug(event_dict['Image'])
-                # test_dict ={
-                #     'EventID': 1,
-                #     'Image' : r'fdsfdsa\\Code.exe'
-                # }
-                detection_query = dictquery.compile(
-                    rule["Query"][0].encode("unicode_escape").decode()
-                )
-                # detection_query = dictquery.compile(r'EventID==3 AND (Image LIKE "*\\Code.exe")')
-                # if detection_query.match(test_dict):
-                #     logger.debug('True')
-                # else:
-                #     logger.debug(detection_query.evaluate(event_dict))
-                if detection_query.match(event_dict):
-                    rowid = event[0]
-                    userid = event[1]
-                    event_dict = {
-                        "UserID": userid,
-                        "Title": rule["Title"],
-                        "Description": rule["Description"],
-                        "Severity": rule["Severity"],
-                        "EventRowID": rowid,
-                    }
-                    list_dict.append(event_dict)
-                # else:
-                #     if event_dict.get('Image') is not None:
-                #         logger.debug(event_dict['EventID'])
-                #         logger.debug(event_dict['Image'].encode('unicode_escape').decode())
-            except Exception as e:
-                logger.debug(eventobj)
-                logger.debug(rule)
-                logger.debug("Detection error: " + e.__str__())
+        try:
+            # event_dict = eventobj.getlogdict()
+            # logger.debug(event_dict)
+            # logger.debug(r'EventID==1 AND (Image LIKE "*\\Code.exe")')
+            # if event_dict.get('Image') is not None:
+            # event_dict['Image'] = event_dict['Image'].encode('unicode_escape').decode()
+            # logger.debug(event_dict['Image'])
+            # test_dict ={
+            #     'EventID': 1,
+            #     'Image' : r'fdsfdsa\\Code.exe'
+            # }
+            # detection_query = dictquery.compile(
+            #     rule["Query"][0].encode("unicode_escape").decode()
+            # )
+            # detection_query = dictquery.compile(r'EventID==3 AND (Image LIKE "*\\Code.exe")')
+            # if detection_query.match(test_dict):
+            #     logger.debug('True')
+            # else:
+            #     logger.debug(detection_query.evaluate(event_dict))
+            matched = df.query(rule["Query"][0])
+            for index, row in matched.iterrows():
+                rowid = row['rowid']
+                userid = row['userid']
+                event_dict = {
+                    "UserID": userid,
+                    "Title": rule["Title"],
+                    "Description": rule["Description"],
+                    "Severity": rule["Severity"],
+                    "EventRowID": rowid,
+                }
+                list_dict.append(event_dict)
+            # else:
+            #     if event_dict.get('Image') is not None:
+            #         logger.debug(event_dict['EventID'])
+            #         logger.debug(event_dict['Image'].encode('unicode_escape').decode())
+        except Exception as e:
+            logger.debug(rule)
+            logger.debug("Detection error: " + e.__str__())
     return list_dict
 
 
@@ -488,7 +504,7 @@ def scanfolder(path):
                             raise Exception(e)
                             rule = SigmaCorrelationRule.from_yaml(yaml_string)
                         rule_list.append(rule)
-                        rule_yaml = SigmaCollection(init_rules=rule_list)
+                        rule_yaml = SigmaCollection(rules=rule_list)
                         query = backend.convert(rule_yaml)  # type: list[str]
                         rules.append(
                             parse_rule_json(
@@ -543,7 +559,7 @@ rules: list[dict] = []
 MonitorList: list[ProcessRule] = []
 # backend: DictQueryBackend
 pipelines = sysmon_pipeline()
-backend = DictQueryBackend(pipelines)
+backend = PandasDataFramePythonBackend(pipelines)
 folderpath = "pipeline"
 # for dir in os.scandir(folderpath):
 #     for e in os.scandir(dir.path):

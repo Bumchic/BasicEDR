@@ -15,6 +15,7 @@ dependencies = [
     "pandas>=3.0.3",
     "pydantic>=2.13.4",
     "pysigma>0.10.5",
+    "pysigma-backend-pd-df",
     "pysigma-pipeline-sysmon>=2.0.0",
     "splunk-sdk>=2.1.1",
     "websockets>=16.0",
