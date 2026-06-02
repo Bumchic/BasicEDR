@@ -14,9 +14,9 @@ dependencies = [
     "mysql-connector-python>=9.7.0",
     "pandas>=3.0.3",
     "pydantic>=2.13.4",
-    "pysigma>0.10.5",
-    "pysigma-backend-pd-df",
-    "pysigma-pipeline-sysmon>=2.0.0",
+    "pysigma>=0.11.23",
+    "pysigma-backend-pd-df>=0.6.0",
+    "pysigma-pipeline-sysmon>=1.0.4",
     "splunk-sdk>=2.1.1",
     "websockets>=16.0",
 ]
