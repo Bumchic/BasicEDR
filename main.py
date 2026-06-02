@@ -146,7 +146,7 @@ class event_table:
         pass
     
     def tojson(self, includerowid: bool) -> str:
-        return json.dumps(self.todict(includerowid))
+        return json.dumps(self.todict(includerowid, rawstringencode=False))
 
     def getuseridjson(self) -> str:
         dict = {
@@ -168,6 +168,22 @@ class event_table:
             return self.log
         res = json.dumps(self.getlogdict())
         return res
+    
+    def getlogdictundecode(self) -> dict[str,str]:
+        if isinstance(self.log, str):
+            event_dict: dict[str, str] = json.loads(self.log)
+            res:dict[str, str] = {}
+            for key, value in event_dict.items():
+                # if isinstance(value, str):
+                #     value = value.encode('unicode_escape').decode()
+                res.update({(key, value)})
+        else:
+            res = self.log
+        if isinstance(res, dict):
+            for key, value in res.items():
+                if isinstance(value, str):
+                    res[key] = value
+        return res
 
     def getlogdict(self) -> dict[str, str]:
         if isinstance(self.log, str):
@@ -185,7 +201,7 @@ class event_table:
                     res[key] = value.encode('unicode_escape').decode()
         return res
 
-    def todict(self, includerowid: bool) -> dict[str, str | int | None]:
+    def todict(self, includerowid: bool, rawstringencode: bool) -> dict[str, str | int | None]:
         res:dict[str, str | int | None]
         if includerowid:
             res  = {
@@ -197,7 +213,10 @@ class event_table:
             self.attribute.userid: self.userid,
         }
         res.update({self.attribute.TimeCreated: self.getTimeCreated()})
-        res.update(self.getlogdict())
+        if rawstringencode:
+            res.update(self.getlogdict())
+        else:
+            res.update(self.getlogdictundecode())
         return res
     def __str__(self) -> str:
         return self.tojson(True)
@@ -314,8 +333,8 @@ def sqlite_create_user(user: dict[str, str]):
     sql = f"insert into {usertable}(username, password) values (?, ?)"
     value = (username, password)
     cursor.execute(sql, value)
-    cursor.close()
     sqlite.commit()
+    cursor.close()
     logger.debug("user inserted")
 
 
@@ -345,10 +364,10 @@ def sqlite_insert_event(userid: int, event: event_table):
     pass
 
 
-def sqlite_get_user_event() -> list[dict[str, str | int| None]] | None:
+def sqlite_get_user_event(id:int) -> list[dict[str, str | int| None]] | None:
     conn = sqlite3.connect(f"{UserDB}.db")
     cursor = conn.cursor()
-    query = f"Select rowid, * from {eventtable} order by TimeCreated desc"
+    query = f"Select rowid, * from {eventtable} where userid = {id} order by TimeCreated desc"
     cursor.execute(query)
     event_res = cursor.fetchall()
     cursor.close()
@@ -361,15 +380,15 @@ def sqlite_get_user_event() -> list[dict[str, str | int| None]] | None:
         TimeCreated = event[2]
         log = event[3]
         eventobj = event_table(rowid=rowid, userid=userid, log=log, TimeCreated=TimeCreated)
-        list_dict.append(eventobj.todict(includerowid=True))
+        list_dict.append(eventobj.todict(includerowid=True, rawstringencode=False))
     return list_dict
 
 
-def sqlite_get_detection_event() ->  list[dict[str, int | str]] | None:
+def sqlite_get_detection_event(id: int) ->  list[dict[str, int | str]] | None:
     conn = sqlite3.connect(f"{UserDB}.db")
     cursor = conn.cursor()
     list_dict = []
-    query = f'Select rowid, * from {eventtable} order by TimeCreated Desc limit 5'
+    query = f'Select rowid, * from {eventtable} where userid = {id} order by TimeCreated Desc limit 5'
     cursor.execute(query)
     event_res = cursor.fetchall()
     cursor.close()
@@ -381,40 +400,45 @@ def sqlite_get_detection_event() ->  list[dict[str, int | str]] | None:
             userid = event[1]
             TimeCreated = event[2]
             log = event[3]
-
             eventobj = event_table(log=log, rowid=TimeCreated, userid=userid, TimeCreated=TimeCreated)
-            
-            event_dict = eventobj.getlogdict()
-            # logger.debug(event_dict)
-            # logger.debug(r'EventID==1 AND (Image LIKE "*\\Code.exe")')
-            # if event_dict.get('Image') is not None:
-                #event_dict['Image'] = event_dict['Image'].encode('unicode_escape').decode()
-                # logger.debug(event_dict['Image'])
-            # test_dict ={
-            #     'EventID': 1,
-            #     'Image' : r'fdsfdsa\\Code.exe'
-            # }
-            detection_query = dictquery.compile(rule['Query'][0].encode('unicode_escape').decode()) 
-            #detection_query = dictquery.compile(r'EventID==3 AND (Image LIKE "*\\Code.exe")') 
-            # if detection_query.match(test_dict):
-            #     logger.debug('True')
-            # else:
-            #     logger.debug(detection_query.evaluate(event_dict))
-            if detection_query.match(event_dict):
-                rowid = event[0]
-                userid = event[1]
-                event_dict = {
-                    "UserID": userid,
-                    'Title' : rule['Title'],
-                    'Description': rule['Description'],
-                    'Severity': rule['Severity'],
-                    'EventRowID': rowid
-                    }
-                list_dict.append(event_dict)
-            # else:
-            #     if event_dict.get('Image') is not None:
-            #         logger.debug(event_dict['EventID'])
-            #         logger.debug(event_dict['Image'].encode('unicode_escape').decode())
+            try:
+
+                
+                event_dict = eventobj.getlogdict()
+                # logger.debug(event_dict)
+                # logger.debug(r'EventID==1 AND (Image LIKE "*\\Code.exe")')
+                # if event_dict.get('Image') is not None:
+                    #event_dict['Image'] = event_dict['Image'].encode('unicode_escape').decode()
+                    # logger.debug(event_dict['Image'])
+                # test_dict ={
+                #     'EventID': 1,
+                #     'Image' : r'fdsfdsa\\Code.exe'
+                # }
+                detection_query = dictquery.compile(rule['Query'][0].encode('unicode_escape').decode()) 
+                #detection_query = dictquery.compile(r'EventID==3 AND (Image LIKE "*\\Code.exe")') 
+                # if detection_query.match(test_dict):
+                #     logger.debug('True')
+                # else:
+                #     logger.debug(detection_query.evaluate(event_dict))
+                if detection_query.match(event_dict):
+                    rowid = event[0]
+                    userid = event[1]
+                    event_dict = {
+                        "UserID": userid,
+                        'Title' : rule['Title'],
+                        'Description': rule['Description'],
+                        'Severity': rule['Severity'],
+                        'EventRowID': rowid
+                        }
+                    list_dict.append(event_dict)
+                # else:
+                #     if event_dict.get('Image') is not None:
+                #         logger.debug(event_dict['EventID'])
+                #         logger.debug(event_dict['Image'].encode('unicode_escape').decode())
+            except Exception as e:
+                logger.debug(eventobj)
+                logger.debug(rule)
+                logger.debug('Detection error: ' + e.__str__())
     return list_dict
 
 
@@ -440,31 +464,27 @@ async def get_user_list():
     return responseModel(message=f"{json.dumps(sqlite_get_user_list())}")
 
 @app.get('/dashboard/getdetectionalert')
-async def get_detection_alert():
-    return responseModel(message=f"{json.dumps(sqlite_get_detection_event())}")
+async def get_detection_alert(id: int):
+    return responseModel(message=f"{json.dumps(sqlite_get_detection_event(id))}")
 
 @app.get("/dashboard/getuserevent")
-async def get_user_event():
-    return responseModel(message=f"{json.dumps(sqlite_get_user_event())}")
+async def get_user_event(id: int):
+    return responseModel(message=f"{json.dumps(sqlite_get_user_event(id))}")
 
 
 @app.post("/dashboard/createuser")
 async def create_user(user: userModel, response: Response):
-    def FuncAdapter(data: tuple):
-        return sqlite_create_user(data[0])
-    def returnresponse(user: userModel, response: Response):
-        logger.debug(user)
-        user_dict = parse_user(user)
-        try:
-            if sqlite_get_user(user_dict) is not None:
-                response.status_code = status.HTTP_403_FORBIDDEN
-                return responseModel(message="User already exist")
-            q.put((FuncAdapter, (user_dict)))
-            response.status_code = status.HTTP_200_OK
-            return responseModel(message="User successfully created")
-        except Exception as e:
-            response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-            return responseModel(message=f"{e}")
+    user_dict = parse_user(user)
+    try:
+        if sqlite_get_user(user_dict) is not None:
+            response.status_code = status.HTTP_403_FORBIDDEN
+            return responseModel(message="User already exist")
+        q.put((sqlite_create_user, user_dict))
+        response.status_code = status.HTTP_200_OK
+        return responseModel(message="User successfully created")
+    except Exception as e:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return responseModel(message=f"{e}")
 
 
 @app.post("/auth")
@@ -496,6 +516,7 @@ def get_token(socket: WebSocket, token: Annotated[str | None, Query()] = None):
             found = True
             break
     if found is False:
+        logger.debug('wrong token')
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
     return token
 
@@ -568,6 +589,7 @@ for dir in os.scandir(folderpath):
                 rule_yaml: SigmaCollection
                 try:
                     for data in datas:
+                        
                             yaml_string = yaml.dump(data)
                             rule: SigmaRule | SigmaCorrelationRule
                             try:

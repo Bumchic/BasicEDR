@@ -10,10 +10,10 @@
 </head>
 
 <body>
-    <div class="container">
+    <div class="container m-0">
         <h1 class="h1">Dashboard</h1>
     </div>
-    <div class="container">
+    <div class="container m-0">
         <div class="col">
             <form id="user_form">
                 <div class="container">
@@ -65,7 +65,7 @@
                 </nav>
             </div>
             <div id="eventtable">
-                <table class="table table-responsive table-wrapper">
+                <table class="table table-responsive table-wrapper w-100">
                     <thead id="tablehead">
                         <tr>
                             <th scope="col">log</th>
@@ -103,14 +103,14 @@
                 <div id="page-selection-event"></div>
             </div>
             <div id="detectiontable">
-                <table class="table table-responsive table-wrapper" >
+                <table class="table table-responsive table-wrapper">
                     <thead id="tablehead">
                         <tr>
-                            <th scope="col">Severity</th>
+                            <!-- <th scope="col">Severity</th>
                             <th scope="col">Title</th>
                             <th scope="col">Description</th>
                             <th scope="col">TimeCreated</th>
-                            <th scope="col">RuleName</th>
+                            <th scope="col">RuleName</th> -->
                         </tr>
                     </thead>
                     <tbody id='tablebodydetection'>
@@ -156,27 +156,9 @@
                 eventtable.addClass('d-none')
             }
         }
-        $(document).ready(() => {
-            updatetable()
+        function filleventtable(id) {
             $.ajax({
-                url: window.location.href + '/getuserlist',
-                method: 'GET',
-                contentType: 'application/json',
-                success: (data, status) => {
-                    list = JSON.parse(data.message)
-                    list.forEach((curval, index) => {
-                        $('#dropdownmenu').append('<a class="dropdown-item" href="#">' + curval['username'] + '</a>')
-                    })
-
-
-                },
-                error: (data, status) => {
-                    $('#testp').text(data.responseJSON['message'])
-                }
-            }
-            )
-            $.ajax({
-                url: window.location.href + '/getuserevent',
+                url: window.location.href + '/getuserevent?id=' + id,
                 method: 'GET',
                 contentType: 'application/json',
                 success: (data, status) => {
@@ -215,7 +197,7 @@
                         maxVisible: 10
                     }).on('page', function (event, num) {
                         $('#tablebodyevent').empty()
-                        $('#tablebodyevent').append(page_list[num-1])
+                        $('#tablebodyevent').append(page_list[num - 1])
                         $(this).bootpag({ page: num })
                     })
                     $('#page-selection-event').trigger('page', [1])
@@ -227,7 +209,7 @@
             }
             )
             $.ajax({
-                url: window.location.href + '/getdetectionalert',
+                url: window.location.href + '/getdetectionalert?id=' + id,
                 method: 'GET',
                 contentType: 'application/json',
                 success: (data, status) => {
@@ -265,7 +247,7 @@
                         maxVisible: 10
                     }).on('page', function (event, num) {
                         $('#tablebodydetection').empty()
-                        $('#tablebodydetection').append(page_list_detect[num-1])
+                        $('#tablebodydetection').append(page_list_detect[num - 1])
                         $(this).bootpag({ page: num })
                     })
                     $('#page-selection-detection').trigger('page', [1])
@@ -277,7 +259,38 @@
                 }
             }
             )
+        }
+        $(document).ready(() => {
+            updatetable()
+            $.ajax({
+                url: window.location.href + '/getuserlist',
+                method: 'GET',
+                contentType: 'application/json',
+                success: (data, status) => {
+                    list = JSON.parse(data.message)
+                    first_user = list[0]['username']
+                    list.forEach((curval, index) => {
+                        id = index + 1
+                        $('#dropdownmenu').append('<a class="dropdown-item" userid=' + id + '>' + curval['username'] + '</a>')
+
+                    })
+                    filleventtable(1)
+                    $('.dropdown-item').on('click', (event) => {
+                        user = $(event.target).text()
+                        idtext = $(event.target).attr('userid')
+                        id = parseInt(idtext)
+                        $('#dropdownMenuButton').text(user)
+                        filleventtable(id)
+                    })
+                    //   dropdownMenuButton
+                },
+                error: (data, status) => {
+                    $('#testp').text(data.responseJSON['message'])
+                }
+            }
+            )
         })
+
         form = $('#user_form')
         form.on('submit', function (event) {
             event.preventDefault()
@@ -318,8 +331,8 @@
             updatetable()
         })
         $('#gotopagebtn').on('click', () => {
-            page_selection = $('#page-selection-event') 
-            if (!iseventview){
+            page_selection = $('#page-selection-event')
+            if (!iseventview) {
                 page_selection = $('#page-selection-detection')
             }
             input = $('#gotopageinput').val()
