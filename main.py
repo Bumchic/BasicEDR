@@ -59,8 +59,6 @@ from typing import Annotated
 import random
 import sqlite3
 from sigma.backends.sqlite.sqlite import sqliteBackend
-from sigma.backends.elasticsearch.elasticsearch_eql import EqlBackend
-from sigma.backends.dictquery.dictquery import DictQueryBackend
 import json
 from sigma.processing.pipeline import ProcessingPipeline
 from sigma.conversion.base import Backend
