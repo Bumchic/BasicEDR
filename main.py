@@ -561,24 +561,27 @@ folderpath = 'pipeline'
 for dir in os.scandir(folderpath):
     for e in os.scandir(dir.path):
         if e.is_file():
-            with open(e.path, 'r') as f:
+            with open(e.path, 'r', encoding= "utf-8") as f:
                 datas = yaml.load_all(f, Loader=yaml.FullLoader)
                 index = 0
                 rule_list = []
                 rule_yaml: SigmaCollection
-                for data in datas:
-                    yaml_string = yaml.dump(data)
-                    rule: SigmaRule | SigmaCorrelationRule
-                    try:
-                        rule = SigmaRule.from_yaml(yaml_string)
-                    except Exception:
-                        rule = SigmaCorrelationRule.from_yaml(yaml_string)
-                    rule_yaml = SigmaCollection(init_rules=rule_list)
-                    print(rule_yaml.names_to_rules)
-                    rule_yaml = rule_yaml.from_yaml(yaml_string)
-                    rule_list.append(rule)
-                    query = backend.convert(rule_yaml) #type: list[str]
-                    rules.append(parse_rule_json(Title=data['title'], Description=data['description'], Severity=data['level'], Query=query))
+                try:
+                    for data in datas:
+                            yaml_string = yaml.dump(data)
+                            rule: SigmaRule | SigmaCorrelationRule
+                            try:
+                                rule = SigmaRule.from_yaml(yaml_string)
+                            except Exception as e:
+                                raise Exception(e)
+                                rule = SigmaCorrelationRule.from_yaml(yaml_string)
+                            rule_list.append(rule)
+                            rule_yaml = SigmaCollection(init_rules=rule_list)
+                            query = backend.convert(rule_yaml) #type: list[str]
+                            rules.append(parse_rule_json(Title=data['title'], Description=data['description'], Severity=data['level'], Query=query))
+                except Exception as e:
+                    logger.debug('file name: ' + f.name)
+                    logger.debug('Read rule exception: ' + e.__str__())
 UserDB = "UserDB"
 EventDB = 'EventDB'
 usertable = "user"
