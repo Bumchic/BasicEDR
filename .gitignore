@@ -180,3 +180,5 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 UserDb.db
+UserDB.db-shm
+UserDB.db-wal

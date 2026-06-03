@@ -126,6 +126,25 @@
                     <button class="btn btn-success" id="gotopagebtn">Go To Page</button>
                 </div>
             </div>
+            <div class="col">
+                <div id="showtablediv">
+                <p>log from detection (press show in detection panel)</p>
+                <table class="table table-responsive table-wrapper">
+                    <thead id="tablehead">
+                        <tr>
+                            <th scope="col" class="invisible"></th>
+                            <!-- <th scope="col">Severity</th>
+                            <th scope="col">Title</th>
+                            <th scope="col">Description</th>
+                            <th scope="col">TimeCreated</th>
+                            <th scope="col">RuleName</th> -->
+                        </tr>
+                    </thead>
+                    <tbody id='showtable'>
+                    </tbody>
+                </table>
+            </div>
+            </div>
         </div>
     </div>
     <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
@@ -161,6 +180,9 @@
                 url: window.location.href + '/getuserevent?id=' + id,
                 method: 'GET',
                 contentType: 'application/json',
+                beforeSend: () => {
+                    $('#tablebodyevent').append('<p>loading</p>')
+                },
                 success: (data, status) => {
                     pass = false
                     page_list = []
@@ -212,6 +234,9 @@
                 url: window.location.href + '/getdetectionalert?id=' + id,
                 method: 'GET',
                 contentType: 'application/json',
+                beforeSend: () => {
+                    $('#tablebodydetection').append('<p>loading</p>')
+                },
                 success: (data, status) => {
                     console.log(data)
                     pass = false
@@ -227,7 +252,13 @@
                                 continue
 
                             }
-                            html += '<td>' + '<bold>' + key + ' </bold>' + ': ' + curval[key] + '</td>'
+                            if (key == 'eventrowid') {
+                                html += `<td><bold>event</bold>: <button class ="btn btn-warning eventrowbtn" eventid="${curval[key]}">Show</button></td>`
+                              //  html += '<td>' + '<bold>' + key + ' </bold>' + ': <button class ="btn btn-warning eventrowbtn" eventid="${curval[key]}">' + curval[key] + '</button></td>'
+                            } else {
+                                html += '<td>' + '<bold>' + key + ' </bold>' + ': ' + curval[key] + '</td>'
+                            }
+
                         }
                         html += '</tr>'
                         pass = false
@@ -252,7 +283,43 @@
                     })
                     $('#page-selection-detection').trigger('page', [1])
 
+                    $('.eventrowbtn').on('click', (event) => {
+                        num = $(event.target).attr('eventid')
+                        num = parseInt(num)
+                        $.ajax({
+                            url: window.location.href + '/getsingleevent?id=' + num,
+                            method: 'GET',
+                            contentType: 'application/json',
+                            beforeSend: () => {
+                                $('#showtable').empty()
+                                $('#showtable').append('loading')
+                            },
+                            success: (data, status) => {
+                                console.log(data)
+                                pass = false
+                                evt = JSON.parse(data.message)
+                                console.log(list.length)
+                                html = ''
+                                html += '<tr>'
+                                for (const key in evt) {
+                                    if (pass == false) {
+                                        pass = true
+                                        continue
 
+                                    }
+                                    html += '<td>' + '<bold>' + key + ' </bold>' + ': ' + evt[key] + '</td>'
+                                }
+                                html += '</tr>'
+                                pass = false
+                                $('#showtable').empty()
+                                $('#showtable').append(html)
+                            },
+                            error: (data, status) => {
+                                $('#testp').text(data.responseJSON['message'])
+                            }
+                        }
+                        )
+                    })
                 },
                 error: (data, status) => {
                     $('#testp').text(data.responseJSON['message'])
@@ -337,6 +404,9 @@
             }
             input = $('#gotopageinput').val()
             input = parseInt(input)
+            if (input < 1) {
+                input = 1
+            }
             if (!Number.isInteger(input)) {
                 alert('input valid value')
                 return
