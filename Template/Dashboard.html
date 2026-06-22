@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.4.1/dist/css/bootstrap.min.css"
+        integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+
+
+</head>
+
+<body>
+    <div class="container m-0">
+        <h1 class="h1">Dashboard</h1>
+    </div>
+    <div class="container m-0">
+        <div class="col">
+            <form id="user_form">
+                <div class="container">
+                    <div class="col">
+                        <h2 class="h2">create user</p>
+                    </div>
+                    <div class="col">
+                        <label for="username">username</label>
+                        <input name="username" id="username">
+                    </div>
+                    <div class="col">
+                        <label for="password">password</label>
+                        <input name="password" id="password">
+                    </div>
+                </div>
+                <button class="btn btn-primary" type="submit" id="submit_btn">create user</button>
+                <p id="submit_msg"></p>
+            </form>
+            <label for="dropdownuser">Agent:</label>
+            <div class="row">
+
+                <div class="dropdown" id="dropdownuser">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton"
+                        data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        Agents
+                    </button>
+                    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton" id="dropdownmenu">
+                    </div>
+                    <p id="testp"></p>
+                </div>
+                <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                    <h4 class="navbar-brand">View</h4>
+                    <button class="navbar-toggler" type="button" data-toggle="collapse"
+                        data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent"
+                        aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+
+                    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                        <ul class="navbar-nav mr-auto">
+                            <li class="nav-item">
+                                <button class="nav-link btn" id="eventbtn">Event</button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="nav-link btn" id="detectionbtn">Detection</button>
+                            </li>
+                        </ul>
+                    </div>
+                </nav>
+            </div>
+            <div id="eventtable">
+                <table class="table table-responsive table-wrapper w-100">
+                    <thead id="tablehead">
+                        <tr>
+                            <th scope="col">log</th>
+                            <!-- <th scope="col">Computer</th>
+                        <th scope="col">EventRecordID</th>
+                        <th scope="col">TimeCreated</th>
+                        <th scope="col">RuleName</th>
+                        <th scope="col">UtcTime</th>
+                        <th scope="col">ProcessGuid</th>
+                        <th scope="col">ProcessId</th>
+                        <th scope="col">Image</th>
+                        <th scope="col">FileVersion</th>
+                        <th scope="col">Description</th>
+                        <th scope="col">Product</th>
+                        <th scope="col">Company</th>
+                        <th scope="col">OriginalFileName</th>
+                        <th scope="col">CommandLine</th>
+                        <th scope="col">CurrentDirectory</th>
+                        <th scope="col">User</th>
+                        <th scope="col">LogonGuid</th>
+                        <th scope="col">LogonId</th>
+                        <th scope="col">TerminalSessionId</th>
+                        <th scope="col">IntegrityLevel</th>
+                        <th scope="col">Hashes</th>
+                        <th scope="col">ParentProcessGuid</th>
+                        <th scope="col">ParentProcessId</th>
+                        <th scope="col">ParentImage</th>
+                        <th scope="col">ParentCommandLine</th>
+                        <th scope="col">ParentUser</th> -->
+                        </tr>
+                    </thead>
+                    <tbody id='tablebodyevent'>
+                    </tbody>
+                </table>
+                <div id="page-selection-event"></div>
+            </div>
+            <div id="detectiontable">
+                <table class="table table-responsive table-wrapper">
+                    <thead id="tablehead">
+                        <tr>
+                            <!-- <th scope="col">Severity</th>
+                            <th scope="col">Title</th>
+                            <th scope="col">Description</th>
+                            <th scope="col">TimeCreated</th>
+                            <th scope="col">RuleName</th> -->
+                        </tr>
+                    </thead>
+                    <tbody id='tablebodydetection'>
+                    </tbody>
+                </table>
+                <div id="page-selection-detection"></div>
+            </div>
+            <div class="col">
+                <div class="row">
+                    <input id="gotopageinput" inputmode="numeric" type="number" min='0' step="1">
+                </div>
+                <div class="row">
+                    <button class="btn btn-success" id="gotopagebtn">Go To Page</button>
+                </div>
+            </div>
+            <div class="col">
+                <div id="showtablediv">
+                    <p>log from detection (press show in detection panel)</p>
+                    <table class="table table-responsive table-wrapper">
+                        <thead id="tablehead">
+                            <tr>
+                                <th scope="col" class="invisible"></th>
+                                <!-- <th scope="col">Severity</th>
+                            <th scope="col">Title</th>
+                            <th scope="col">Description</th>
+                            <th scope="col">TimeCreated</th>
+                            <th scope="col">RuleName</th> -->
+                            </tr>
+                        </thead>
+                        <tbody id='showtable'>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+     <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
+        integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+        integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.4.1/dist/js/bootstrap.min.js"
+        integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6"
+        crossorigin="anonymous"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha1/0.7.0/sha1.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/bootpag@5.0.1/dist/jquery.bootpag.min.js"></script>
+    <script type="text/javascript"
+        src="https://cdn.jsdelivr.net/npm/jquery-validation@1.19.5/dist/jquery.validate.min.js"></script>
+    <script>
+        function updatetable() {
+                    if (iseventview) {
+                        eventtable.removeClass('d-none')
+                        detectiontable.addClass('d-none')
+                    } else {
+                        detectiontable.removeClass('d-none')
+                        eventtable.addClass('d-none')
+                    }
+                }
+                function filleventtable(id) {
+                    $.ajax({
+                        url: window.location.href + '/getuserevent?id=' + id,
+                        method: 'GET',
+                        contentType: 'application/json',
+                        beforeSend: () => {
+                            $('#tablebodyevent').append('<p>loading</p>')
+                        },
+                        success: (data, status) => {
+                            pass = false
+                            page_list = []
+                            list = JSON.parse(data.message)
+                            console.log(list.length)
+                            html = ''
+                            ind = 0
+                            list.forEach((curval, index) => {
+                                html += '<tr>'
+                                for (const key in curval) {
+                                    if (pass == false) {
+                                        pass = true
+                                        continue
+
+                                    }
+                                    html += '<td>' + '<bold>' + key + ' </bold>' + ': ' + curval[key] + '</td>'
+                                }
+                                html += '</tr>'
+                                pass = false
+                                if (ind == 9) {
+                                    page_list.push(html)
+                                    ind = 0
+                                    html = ''
+
+                                } else {
+                                    ind++
+                                }
+                            })
+
+                            page_list.push(html)
+                            $('#page-selection-event').bootpag({
+                                total: page_list.length,
+                                page: 1,
+                                maxVisible: 10
+                            }).on('page', function (event, num) {
+                                $('#tablebodyevent').empty()
+                                $('#tablebodyevent').append(page_list[num - 1])
+                                $(this).bootpag({ page: num })
+                            })
+                            $('#page-selection-event').trigger('page', [1])
+
+                        },
+                        error: (data, status) => {
+                            $('#testp').text(data.responseJSON['message'])
+                        }
+                    }
+                    )
+                    $.ajax({
+                        url: window.location.href + '/getdetectionalert?id=' + id,
+                        method: 'GET',
+                        contentType: 'application/json',
+                        beforeSend: () => {
+                            $('#tablebodydetection').append('<p>loading</p>')
+                        },
+                        success: (data, status) => {
+                            console.log(data)
+                            pass = false
+                            page_list_detect = []
+                            list = JSON.parse(data.message)
+                            html = ''
+                            ind = 0
+                            list.forEach((curval, index) => {
+                                html += '<tr>'
+                                for (const key in curval) {
+                                    if (pass == false) {
+                                        pass = true
+                                        continue
+
+                                    }
+                                    if (key == 'eventrowid') {
+                                        html += `<td><bold>event</bold>: <button class ="btn btn-warning eventrowbtn" eventid="${curval[key]}">Show</button></td>`
+                                        //  html += '<td>' + '<bold>' + key + ' </bold>' + ': <button class ="btn btn-warning eventrowbtn" eventid="${curval[key]}">' + curval[key] + '</button></td>'
+                                    } else {
+                                        html += '<td>' + '<bold>' + key + ' </bold>' + ': ' + curval[key] + '</td>'
+                                    }
+
+                                }
+                                html += '</tr>'
+                                pass = false
+                                if (ind == 9) {
+                                    page_list_detect.push(html)
+                                    ind = 0
+                                    html = ''
+
+                                } else {
+                                    ind++
+                                }
+                            })
+                            page_list_detect.push(html)
+                            $('#page-selection-detection').bootpag({
+                                total: page_list_detect.length,
+                                page: 1,
+                                maxVisible: 10
+                            }).on('page', function (event, num) {
+                                $('#tablebodydetection').empty()
+                                $('#tablebodydetection').append(page_list_detect[num - 1])
+                                $(this).bootpag({ page: num })
+                            })
+                            $('#page-selection-detection').trigger('page', [1])
+
+                            $('.eventrowbtn').on('click', (event) => {
+                                num = $(event.target).attr('eventid')
+                                num = parseInt(num)
+                                $.ajax({
+                                    url: window.location.href + '/getsingleevent?id=' + num,
+                                    method: 'GET',
+                                    contentType: 'application/json',
+                                    beforeSend: () => {
+                                        $('#showtable').empty()
+                                        $('#showtable').append('loading')
+                                    },
+                                    success: (data, status) => {
+                                        console.log(data)
+                                        pass = false
+                                        evt = JSON.parse(data.message)
+                                        console.log(list.length)
+                                        html = ''
+                                        html += '<tr>'
+                                        for (const key in evt) {
+                                            if (pass == false) {
+                                                pass = true
+                                                continue
+
+                                            }
+                                            html += '<td>' + '<bold>' + key + ' </bold>' + ': ' + evt[key] + '</td>'
+                                        }
+                                        html += '</tr>'
+                                        pass = false
+                                        $('#showtable').empty()
+                                        $('#showtable').append(html)
+                                    },
+                                    error: (data, status) => {
+                                        $('#testp').text(data.responseJSON['message'])
+                                    }
+                                }
+                                )
+                            })
+                        },
+                        error: (data, status) => {
+                            $('#testp').text(data.responseJSON['message'])
+                        }
+                    }
+                    )
+                }
+            $(document).ready(() => {
+                iseventview = true
+                eventtable = $('#eventtable')
+                detectiontable = $('#detectiontable')
+                updatetable()
+                $.ajax({
+                    url: window.location.href + '/getuserlist',
+                    method: 'GET',
+                    contentType: 'application/json',
+                    success: (data, status) => {
+                        list = JSON.parse(data.message)
+                        first_user = list[0]['username']
+                        list.forEach((curval, index) => {
+                            id = index + 1
+                            $('#dropdownmenu').append('<a class="dropdown-item" userid=' + id + '>' + curval['username'] + '</a>')
+                        })
+                        $('#dropdownMenuButton').text(first_user)
+                        filleventtable(1)
+                        $('.dropdown-item').on('click', (event) => {
+                            user = $(event.target).text()
+                            idtext = $(event.target).attr('userid')
+                            id = parseInt(idtext)
+                            $('#dropdownMenuButton').text(user)
+                            filleventtable(id)
+                        })
+                        //   dropdownMenuButton
+                    },
+                    error: (data, status) => {
+                        $('#testp').text(data.responseJSON['message'])
+                    }
+                }
+                )
+            })
+
+            form = $('#user_form')
+            form.on('submit', function (event) {
+                event.preventDefault()
+                usernametx = $('#username').val()
+                passwordtx = $('#password').val()
+                passwordtx = sha1(passwordtx)
+                payload = {
+                    username: usernametx,
+                    password: passwordtx
+                }
+                $.ajax({
+                    url: window.location.href + '/createuser',
+                    method: 'POST',
+                    data: JSON.stringify(payload),
+                    contentType: 'application/json',
+                    success: (data, status) => {
+                        console.log(data)
+                        $('#submit_msg').text(data.message)
+                    },
+                    error: (data, status) => {
+                        $('#submit_msg').text(data.responseJSON['message'])
+                    }
+                }
+                )
+            })
+            $('#eventbtn').on('click', () => {
+                    if (iseventview == true) {
+                        return
+                    }
+                    iseventview = true
+                    updatetable()
+                })
+                $('#detectionbtn').on('click', () => {
+                    if (iseventview == false) {
+                        return
+                    }
+                    iseventview = false
+                    updatetable()
+                })
+                $('#gotopagebtn').on('click', () => {
+                    page_selection = $('#page-selection-event')
+                    if (!iseventview) {
+                        page_selection = $('#page-selection-detection')
+                    }
+                    input = $('#gotopageinput').val()
+                    input = parseInt(input)
+                    if (input < 1) {
+                        input = 1
+                    }
+                    if (!Number.isInteger(input)) {
+                        alert('input valid value')
+                        return
+                    }
+                    page_selection.trigger('page', [input])
+                })
+    </script>
+    <style>
+        .table-wrapper {
+            max-height: 500px;
+            overflow: auto;
+            display: inline-block;
+        }
+    </style>
+</body>
+
+</html>

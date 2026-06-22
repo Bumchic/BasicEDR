@@ -32,12 +32,14 @@
 from contextlib import asynccontextmanager
 from enum import Enum
 from re import S
+from tempfile import template
 import threading
 from turtle import title
 
 from charset_normalizer import detect
 from fastapi import (
     FastAPI,
+    Request,
     WebSocket,
     WebSocketDisconnect,
     Depends,
@@ -46,8 +48,9 @@ from fastapi import (
     WebSocketException,
     status,
 )
-import fastapi
-from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from jinja2 import Template
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from numpy import tile
 from pydantic import BaseModel
 from bs4 import BeautifulSoup
@@ -66,6 +69,8 @@ import dictquery
 from threading import Lock
 import queue
 import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 Event_category = {
     "EventID": "nvarchar(10)",
@@ -188,19 +193,18 @@ class event_table:
         return res
 
     def getlogdict(self) -> dict[str, str]:
+        res: dict[str, str] = {}
         if isinstance(self.log, str):
             event_dict: dict[str, str] = json.loads(self.log)
-            res: dict[str, str] = {}
             for key, value in event_dict.items():
                 if isinstance(value, str):
                     value = turntorawstring(value)
-                res.update({(key, value)})
+                res.update({key: value})
         else:
             res = self.log
-        if isinstance(res, dict):
             for key, value in res.items():
                 if isinstance(value, str):
-                    res[key] = value.encode("unicode_escape").decode()
+                    res[key] = turntorawstring(value)
         return res
 
     def todict(
@@ -272,7 +276,6 @@ class detectiontable:
         return self.level
 
     def gettag(self) -> str:
-        logger.debug(self.tag)
         if isinstance(self.tag, str):
             return self.tag
         else:
@@ -287,13 +290,13 @@ class detectiontable:
 
     def todict(self) -> dict[str, str | int]:
         return {
-            self.attribute.userid : self.getuserid(),
+            self.attribute.userid: self.getuserid(),
             self.attribute.TimeCreated: self.getTimeCreated(),
             self.attribute.Title: self.getTitle(),
             self.attribute.Description: self.getDescription(),
             self.attribute.level: self.getlevel(),
             self.attribute.tag: self.gettag(),
-            self.attribute.eventrowid: self.geteventrowref()
+            self.attribute.eventrowid: self.geteventrowref(),
         }
 
 
@@ -382,13 +385,30 @@ def checkwithrule(event: dict[str, str], rule: str) -> bool:
     #     if e.endswith("powershell.exe"):
     #         logger.debug(event)
     #         logger.debug(rule)
+    def turn_lower_case(event: dict[str, str]):
+        res = {}
+        for key, value in event.items():
+            if isinstance(value, str):
+                res.update({key.casefold(): value.casefold()})
+            else:
+                res.update({key.casefold(): value})
+        return res
+
+    lower_case_event = turn_lower_case(event)
     try:
-        if dictquery.match(event, rule):
+        if dictquery.match(lower_case_event, rule.casefold()):
             return True
+        # if (
+        #     lower_case_event["CommandLine"] is not None
+        #     and lower_case_event["Image"].find("powershell.exe") != -1
+        #     and rule.find("-encodedcommand") != -1
+        # ):
+        #     logger.debug(lower_case_event)
+        #     logger.debug("rule: " + rule)
     except Exception as e:
         logger.debug(e)
-        logger.debug(event)
-        logger.debug(rule)
+        # logger.debug(event)
+        # logger.debug(rule)
     return False
 
 
@@ -533,7 +553,8 @@ def sqlite_get_user_event(id: int) -> list[dict[str, str | int | None]] | None:
         list_dict.append(eventobj.todict(includerowid=True, rawstringencode=False))
     return list_dict
 
-def sqlite_get_single_event(id: int) -> dict[str, str| int | None]:
+
+def sqlite_get_single_event(id: int) -> dict[str, str | int | None]:
     logger.debug(id)
     conn = sqlite3.connect(f"{UserDB}.db")
     cursor = conn.cursor()
@@ -545,17 +566,16 @@ def sqlite_get_single_event(id: int) -> dict[str, str| int | None]:
     userid = event[1]
     TimeCreated = event[2]
     log = event[3]
-    eventobj = event_table(
-        rowid=rowid, userid=userid, log=log, TimeCreated=TimeCreated
-    )
+    eventobj = event_table(rowid=rowid, userid=userid, log=log, TimeCreated=TimeCreated)
     return eventobj.todict(includerowid=True, rawstringencode=False)
     pass
+
 
 def sqlite_get_detection_event(id: int) -> list[dict[str, int | str]] | None:
     conn = sqlite3.connect(f"{UserDB}.db")
     cursor = conn.cursor()
     list_detection = []
-    query = f"Select rowid, * from {detectiontablename} where userid = {id} order by TimeCreated"
+    query = f"Select rowid, * from {detectiontablename} where userid = {id} order by TimeCreated desc"
     cursor.execute(query)
     detection_res = cursor.fetchall()
     cursor.close()
@@ -641,6 +661,7 @@ def sqlite_get_detection_event(id: int) -> list[dict[str, int | str]] | None:
 def parse_user(user: userModel) -> dict[str, str]:
     return {"username": user.username, "password": user.password}
 
+
 def get_token(socket: WebSocket, token: Annotated[str | None, Query()] = None):
     if token is None:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
@@ -665,9 +686,10 @@ def get_generated_token_from_token(token: str) -> agentModel | None:
 def queueworker():
     global program_start
     while program_start:
-            (func, data) = q.get()
-            func(data)
-            q.task_done()
+        (func, data) = q.get()
+        func(data)
+        q.task_done()
+
 
 def scanfolder(path):
     for e in os.scandir(path):
@@ -706,13 +728,13 @@ def scanfolder(path):
     pass
 
 
-
 @asynccontextmanager
-async def lifespan(app:FastAPI):
+async def lifespan(app: FastAPI):
     program_start = True
     yield
     program_start = False
     sqlite.close()
+
 
 print("program running")
 logging.basicConfig(
@@ -737,7 +759,7 @@ cursor: sqlite3.Cursor
 sqlite: sqlite3.Connection
 sqlite = sqlite3.connect(f"{UserDB}.db", check_same_thread=False)
 generated_token: list[agentModel] = []
-program_start:bool = True
+program_start: bool = True
 cursor = sqlite.cursor()
 cursor.execute(
     f"CREATE TABLE IF NOT EXISTS {usertable} (username VARCHAR(255), password VARCHAR(255))"
@@ -750,12 +772,27 @@ detection_table_attr = detectiontable.attribute
 cursor.execute(
     f"CREATE TABLE IF NOT EXISTS {detectiontablename} ({detection_table_attr.userid} integer, {detection_table_attr.TimeCreated} text,{detection_table_attr.Title} nvarchar(255), {detection_table_attr.Description} text, {detection_table_attr.level} nvarchar(255), {detection_table_attr.tag} nvarchar(255), {detection_table_attr.eventrowid} integer)"
 )
-cursor.execute('pragma journal_mode=wal')
+cursor.execute("pragma journal_mode=wal")
 cursor.close()
 q = queue.Queue()
 threading.Thread(target=queueworker, daemon=True).start()
 
+origins = [
+    # "http://localhost: 5173"
+    "*"
+]
+
 app = FastAPI(lifespan=lifespan)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="Template")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")
@@ -763,10 +800,21 @@ def root():
     return HTMLResponse(content="hello", status_code=200)
 
 
-@app.get("/dashboard")
-def get_dashboard():
-    dashboard = open("Dashboard.html", mode="r").read()
-    return HTMLResponse(dashboard)
+# @app.get('/js/{file}')
+# def get_js_file(file: str):
+#     path = os.path.dirname(__file__)
+#     path = os.path.join(path, 'js', file)
+#     return FileResponse(path)
+# with open(path, mode= 'r', newline='\r\n') as f:
+#     return f.read()
+
+
+# @app.get("/dashboard", response_class=HTMLResponse)
+# def get_dashboard(request: Request):
+#     # dashboard = open("Dashboard.html", mode="r").read()
+#     # html_res = Template(dashboard)
+#     # website = html_res.render()
+#     return templates.TemplateResponse(request=request, name='Dashboard.html')
 
 
 @app.get("/dashboard/getuserlist")
@@ -783,9 +831,11 @@ def get_detection_alert(id: int):
 def get_user_event(id: int):
     return responseModel(message=f"{json.dumps(sqlite_get_user_event(id))}")
 
-@app.get('/dashboard/getsingleevent')
+
+@app.get("/dashboard/getsingleevent")
 def get_single_event(id: int):
     return responseModel(message=f"{json.dumps(sqlite_get_single_event(id))}")
+
 
 @app.post("/dashboard/createuser")
 def create_user(user: userModel, response: Response):
@@ -821,9 +871,6 @@ def get_user(user: userModel, response: Response):
     return responseModel(message="credential invalid")
 
 
-
-
-
 @app.websocket("/ws")
 async def websocket_endpoint(
     socket: WebSocket, token: Annotated[str, Depends(get_token)]
@@ -855,6 +902,3 @@ async def websocket_endpoint(
         q.join()
         generated_token.remove(agent)
         MonitorList.remove(processmonitor)
-
-
-
