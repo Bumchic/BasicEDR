@@ -15,7 +15,7 @@
 
 import './_jquery.js'
 import 'bootpag'
-import {sha1} from 'sha1'
+import { sha1 } from 'sha1'
 
 
 
@@ -200,6 +200,9 @@ $.ajax({
   contentType: 'application/json',
   success: (data, status) => {
     const list = JSON.parse(data.message)
+    if (list.length == 0) {
+      return
+    }
     const first_user = list[0]['username']
     list.forEach((curval, index) => {
       let id = index + 1
@@ -228,8 +231,7 @@ form.on('submit', function (event) {
   event.preventDefault()
   const usernametx = $('#username').val()
   let passwordtx = $('#password').val()
-  passwordtx = sha1(passwordtx)
-  payload = {
+  const payload = {
     username: usernametx,
     password: passwordtx
   }

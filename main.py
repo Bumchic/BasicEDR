@@ -51,7 +51,7 @@ from fastapi import (
 from fastapi.templating import Jinja2Templates
 from jinja2 import Template
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from numpy import tile
+from numpy import byte, tile
 from pydantic import BaseModel
 from bs4 import BeautifulSoup
 import logging
@@ -71,6 +71,8 @@ import queue
 import os
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+import hashlib
+import bcrypt
 
 Event_category = {
     "EventID": "nvarchar(10)",
@@ -378,6 +380,28 @@ class ProcessRule:
         logger.debug(dataframe)
 
 
+class user_table:
+    username: str
+    password: str
+    salt: str
+
+    def __init__(self, username: str, password: str, salt: str) -> None:
+        self.username = username
+        self.password = password
+        self.salt = salt
+        pass
+
+    @staticmethod
+    def extract_sql_res_single(sql_res) -> user_table:
+        try:
+            username = sql_res[0]
+            password = sql_res[1]
+            salt = sql_res[2]
+            return user_table(username=username, password=password, salt=salt)
+        except Exception as e:
+            raise Exception(e)
+
+
 def checkwithrule(event: dict[str, str], rule: str) -> bool:
     # if event.get("Image") is not None:
     #     e = event.get("Image")
@@ -473,29 +497,48 @@ def sqlite_get_user_list() -> list[dict[str, str]] | None:
 def sqlite_create_user(user: dict[str, str]):
     cursor = sqlite.cursor()
     username = user["username"]
-    password = user["password"]
-    sql = f"insert into {usertable}(username, password) values (?, ?)"
-    value = (username, password)
+    salt = bcrypt.gensalt()
+    password = hashpass(user["password"], salt=salt)
+    password = password.decode(encoding="utf-8")
+    salt = salt.decode(encoding="utf-8")
+    sql = f"insert into {usertable}(username, password, salt) values (?, ?, ?)"
+    value = (username, password, salt)
     cursor.execute(sql, value)
     sqlite.commit()
     cursor.close()
     logger.debug("user inserted")
 
 
+def hashpass(password: str, salt: str | bytes) -> bytes:
+    password_hashed: bytes
+    if isinstance(salt, str):
+        password_hashed = bcrypt.hashpw(
+            password=password.encode("utf-8"), salt=salt.encode("utf-8")
+        )
+        return password_hashed
+    password_hashed = bcrypt.hashpw(password=password.encode("utf-8"), salt=salt)
+    return password_hashed
+
+
+def checkpasshash(password: str, hashedpass: str):
+    return bcrypt.checkpw(
+        password=password.encode("utf-8"), hashed_password=hashedpass.encode("utf-8")
+    )
+
+
 def sqlite_auth_user(user: dict[str, str]) -> bool:
+    password = user["password"]
     conn = sqlite3.connect(f"{UserDB}.db")
     cursor = conn.cursor()
-    sql = f"Select * from {usertable} where username = ? and password = ?"
-    values = (
-        user["username"],
-        user["password"],
-    )
+    sql = f"Select * from {usertable} where username = ?"
+    values = (user["username"],)
     cursor.execute(sql, values)
     user_res = cursor.fetchone()
     cursor.close()
-    if user_res is None:
-        return False
-    return True
+    user_table_obj = user_table.extract_sql_res_single(sql_res=user_res)
+    if checkpasshash(password=password, hashedpass=user_table_obj.password) is True:
+        return True
+    return False
 
 
 def sqlite_insert_detection(detection: detectiontable):
@@ -762,7 +805,7 @@ generated_token: list[agentModel] = []
 program_start: bool = True
 cursor = sqlite.cursor()
 cursor.execute(
-    f"CREATE TABLE IF NOT EXISTS {usertable} (username VARCHAR(255), password VARCHAR(255))"
+    f"CREATE TABLE IF NOT EXISTS {usertable} (username VARCHAR(255), password VARCHAR(255), salt VARCHAR(255))"
 )
 event_table_attribute = event_table.attribute
 cursor.execute(
